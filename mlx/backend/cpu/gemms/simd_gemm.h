@@ -3,7 +3,13 @@
 
 #include "mlx/backend/cpu/simd/simd.h"
 
+#ifdef HAVE_AVX
+#include "mlx/backend/cpu/simd/avx_simd_matmul.h"
+#endif
+
 namespace mlx::core {
+
+static bool avx_path_printed = false;
 
 inline int ceildiv(int a, int b) {
   return (a + b - 1) / b;
@@ -79,11 +85,28 @@ void simd_gemm(
         for (int ii = 0; ii < block_size && i * block_size + ii < M; ++ii) {
           for (int jj = 0; jj < block_size && j * block_size + jj < N; ++jj) {
             for (int kk = 0; kk < block_size; kk += simd_size) {
-              auto av =
-                  simd::load<AccT, simd_size>(a_block + ii * block_size + kk);
-              auto bv =
-                  simd::load<AccT, simd_size>(b_block + jj * block_size + kk);
+              #if defined(HAVE_AVX) && defined(__AVX__)
+              if constexpr (std::is_same_v<AccT, float> && simd_size == 8) {
+                if (!avx_path_printed) {
+                  fprintf(stderr, "INFO: Using AVX-optimized path for matrix multiplication\n");
+                  avx_path_printed = true;
+                }
+                // Use AVX optimized dot product
+                c_block[ii * block_size + jj] += 
+                  simd::avx_dot_product8(a_block + ii * block_size + kk, 
+                                       b_block + jj * block_size + kk);
+              } else {
+                // Fallback to original code
+                auto av = simd::load<AccT, simd_size>(a_block + ii * block_size + kk);
+                auto bv = simd::load<AccT, simd_size>(b_block + jj * block_size + kk);
+                c_block[ii * block_size + jj] += simd::sum(av * bv);
+              }
+            #else
+              // Original code
+              auto av = simd::load<AccT, simd_size>(a_block + ii * block_size + kk);
+              auto bv = simd::load<AccT, simd_size>(b_block + jj * block_size + kk);
               c_block[ii * block_size + jj] += simd::sum(av * bv);
+            #endif
             }
           }
         }
@@ -106,11 +129,24 @@ void simd_gemm(
           for (int jj = 0; jj < block_size && j * block_size + jj < N; ++jj) {
             int kk = 0;
             for (; kk < last_k_simd_block; kk += simd_size) {
-              auto av =
-                  simd::load<AccT, simd_size>(a_block + ii * block_size + kk);
-              auto bv =
-                  simd::load<AccT, simd_size>(b_block + jj * block_size + kk);
+              #if defined(HAVE_AVX) && defined(__AVX__)
+              if constexpr (std::is_same_v<AccT, float> && simd_size == 8) {
+                // Use AVX optimized dot product
+                c_block[ii * block_size + jj] += 
+                  simd::avx_dot_product8(a_block + ii * block_size + kk, 
+                                       b_block + jj * block_size + kk);
+              } else {
+                // Fallback to original code
+                auto av = simd::load<AccT, simd_size>(a_block + ii * block_size + kk);
+                auto bv = simd::load<AccT, simd_size>(b_block + jj * block_size + kk);
+                c_block[ii * block_size + jj] += simd::sum(av * bv);
+              }
+            #else
+              // Original code
+              auto av = simd::load<AccT, simd_size>(a_block + ii * block_size + kk);
+              auto bv = simd::load<AccT, simd_size>(b_block + jj * block_size + kk);
               c_block[ii * block_size + jj] += simd::sum(av * bv);
+            #endif
             }
             for (; kk < last_k_block_size; ++kk) {
               c_block[ii * block_size + jj] +=
