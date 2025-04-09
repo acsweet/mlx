@@ -8,6 +8,8 @@ namespace mlx::core::simd {
 
 #ifdef HAVE_AVX
 // AVX optimized matrix multiplication helper functions
+template <>
+constexpr int max_size<float> = 8;
 
 // Optimized load for 8 floats
 inline __m256 avx_load_float8(const float* x) {
@@ -36,6 +38,27 @@ inline float avx_dot_product8(const float* a, const float* b) {
     __m256 prod = avx_mul_float8(av, bv);
     return avx_sum_float8(prod);
 }
-#endif
 
+// Apply scaling (alpha) to float vector
+inline __m256 avx_scale_floats(__m256 values, float alpha) {
+    __m256 alpha_vec = _mm256_set1_ps(alpha);
+    return _mm256_mul_ps(values, alpha_vec);
+}
+
+// Apply scaling and addition (alpha*x + beta*y)
+inline __m256 avx_scale_add_floats(__m256 x, float alpha, __m256 y, float beta) {
+    __m256 alpha_vec = _mm256_set1_ps(alpha);
+    __m256 beta_vec = _mm256_set1_ps(beta);
+    
+    // Compute alpha*x + beta*y using FMA if available
+#ifdef __AVX2__
+    __m256 scaled_x = _mm256_mul_ps(x, alpha_vec);
+    return _mm256_fmadd_ps(y, beta_vec, scaled_x);
+#else
+    __m256 scaled_x = _mm256_mul_ps(x, alpha_vec);
+    __m256 scaled_y = _mm256_mul_ps(y, beta_vec);
+    return _mm256_add_ps(scaled_x, scaled_y);
+#endif
+}
+#endif // HAVE_AVX
 } // namespace mlx::core::simd
