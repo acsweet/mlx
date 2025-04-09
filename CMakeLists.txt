@@ -48,7 +48,7 @@ check_cxx_compiler_flag("-mavx" COMPILER_SUPPORTS_AVX)
 if(COMPILER_SUPPORTS_AVX)
   message(STATUS "Compiler supports AVX - enabling AVX SIMD backend")
   set(HAVE_AVX ON)
-  add_compile_definitions(HAVE_AVX=1) # Define for all targets
+  add_compile_definitions(HAVE_AVX=1) # Define for all targets (is this necessary?)
   add_compile_options(-mavx)
 else()
   message(STATUS "Compiler does not support AVX - using base SIMD backend")
