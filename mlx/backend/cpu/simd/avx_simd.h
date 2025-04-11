@@ -2009,7 +2009,22 @@ inline Simd<float, 8> remainder(Simd<float, 8> a, Simd<float, 8> b) {
     _mm256_store_ps(a_array, a.value);
     _mm256_store_ps(b_array, b.value);
     for (int i = 0; i < 8; i++) {
-        result[i] = std::remainder(a_array[i], b_array[i]);
+        if (b_array[i] == 0) {
+            result[i] = 0;
+            continue;
+        }
+        
+        // Use fmod instead of remainder
+        float mod = std::fmod(a_array[i], b_array[i]);
+        
+        // Adjust sign to match Python's behavior
+        if (mod != 0) {
+            if ((b_array[i] > 0 && mod < 0) || 
+                (b_array[i] < 0 && mod > 0)) {
+                mod += b_array[i];
+            }
+        }
+        result[i] = mod;
     }
     return load<float, 8>(result);
 }
@@ -2019,8 +2034,22 @@ inline Simd<float, 4> remainder(Simd<float, 4> a, Simd<float, 4> b) {
     _mm_store_ps(a_array, a.value);
     _mm_store_ps(b_array, b.value);
     for (int i = 0; i < 4; i++) {
-        result[i] = std::remainder(a_array[i], b_array[i]);
-    }
+        if (b_array[i] == 0) {
+            result[i] = 0;
+            continue;
+        }
+        
+        // Use fmod instead of remainder
+        float mod = std::fmod(a_array[i], b_array[i]);
+        
+        // Adjust sign to match Python's behavior
+        if (mod != 0) {
+            if ((b_array[i] > 0 && mod < 0) || 
+                (b_array[i] < 0 && mod > 0)) {
+                mod += b_array[i];
+            }
+        }
+        result[i] = mod;    }
     return load<float, 4>(result);
 }
 
@@ -2029,8 +2058,22 @@ inline Simd<double, 4> remainder(Simd<double, 4> a, Simd<double, 4> b) {
     _mm256_store_pd(a_array, a.value);
     _mm256_store_pd(b_array, b.value);
     for (int i = 0; i < 4; i++) {
-        result[i] = std::remainder(a_array[i], b_array[i]);
-    }
+        if (b_array[i] == 0) {
+            result[i] = 0;
+            continue;
+        }
+        
+        // Use fmod instead of remainder
+        float mod = std::fmod(a_array[i], b_array[i]);
+        
+        // Adjust sign to match Python's behavior
+        if (mod != 0) {
+            if ((b_array[i] > 0 && mod < 0) || 
+                (b_array[i] < 0 && mod > 0)) {
+                mod += b_array[i];
+            }
+        }
+        result[i] = mod;    }
     return load<double, 4>(result);
 }
 
@@ -2039,8 +2082,22 @@ inline Simd<int, 8> remainder(Simd<int, 8> a, Simd<int, 8> b) {
     _mm256_store_si256((__m256i*)a_array, a.value);
     _mm256_store_si256((__m256i*)b_array, b.value);
     for (int i = 0; i < 8; i++) {
-        // Integer remainder is modulo
-        result[i] = a_array[i] % b_array[i];
+        if (b_array[i] == 0) {
+            result[i] = 0;
+            continue;
+        }
+        
+        // Regular modulo
+        int mod = a_array[i] % b_array[i];
+        
+        // Adjust if signs don't match Python's expected behavior
+        if (mod != 0) {
+            if ((b_array[i] > 0 && mod < 0) || 
+                (b_array[i] < 0 && mod > 0)) {
+                mod += b_array[i];
+            }
+        }
+        result[i] = mod;
     }
     return load<int, 8>(result);
 }
@@ -2050,8 +2107,22 @@ inline Simd<int, 4> remainder(Simd<int, 4> a, Simd<int, 4> b) {
     _mm_store_si128((__m128i*)a_array, a.value);
     _mm_store_si128((__m128i*)b_array, b.value);
     for (int i = 0; i < 4; i++) {
-        result[i] = a_array[i] % b_array[i];
-    }
+        if (b_array[i] == 0) {
+            result[i] = 0;
+            continue;
+        }
+        
+        // Regular modulo
+        int mod = a_array[i] % b_array[i];
+        
+        // Adjust if signs don't match Python's expected behavior
+        if (mod != 0) {
+            if ((b_array[i] > 0 && mod < 0) || 
+                (b_array[i] < 0 && mod > 0)) {
+                mod += b_array[i];
+            }
+        }
+        result[i] = mod;    }
     return load<int, 4>(result);
 }
 
