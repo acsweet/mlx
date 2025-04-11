@@ -3,13 +3,7 @@
 
 #include "mlx/backend/cpu/simd/simd.h"
 
-#ifdef HAVE_AVX
-#include "mlx/backend/cpu/simd/avx_simd_matmul.h"
-#endif
-
 namespace mlx::core {
-
-static bool avx_path_printed = false;
 
 inline int ceildiv(int a, int b) {
   return (a + b - 1) / b;
@@ -85,28 +79,11 @@ void simd_gemm(
         for (int ii = 0; ii < block_size && i * block_size + ii < M; ++ii) {
           for (int jj = 0; jj < block_size && j * block_size + jj < N; ++jj) {
             for (int kk = 0; kk < block_size; kk += simd_size) {
-              #if defined(HAVE_AVX) && defined(__AVX__)
-              if constexpr (std::is_same_v<AccT, float> && simd_size == 8) {
-                if (!avx_path_printed) {
-                  fprintf(stderr, "INFO: Using AVX-optimized path for matrix multiplication\n");
-                  avx_path_printed = true;
-                }
-                // Use AVX optimized dot product
-                c_block[ii * block_size + jj] += 
-                  simd::avx_dot_product8(a_block + ii * block_size + kk, 
-                                       b_block + jj * block_size + kk);
-              } else {
-                // Fallback to original code
-                auto av = simd::load<AccT, simd_size>(a_block + ii * block_size + kk);
-                auto bv = simd::load<AccT, simd_size>(b_block + jj * block_size + kk);
-                c_block[ii * block_size + jj] += simd::sum(av * bv);
-              }
-            #else
-              // Original code
-              auto av = simd::load<AccT, simd_size>(a_block + ii * block_size + kk);
-              auto bv = simd::load<AccT, simd_size>(b_block + jj * block_size + kk);
+              auto av =
+                  simd::load<AccT, simd_size>(a_block + ii * block_size + kk);
+              auto bv =
+                  simd::load<AccT, simd_size>(b_block + jj * block_size + kk);
               c_block[ii * block_size + jj] += simd::sum(av * bv);
-            #endif
             }
           }
         }
@@ -129,24 +106,11 @@ void simd_gemm(
           for (int jj = 0; jj < block_size && j * block_size + jj < N; ++jj) {
             int kk = 0;
             for (; kk < last_k_simd_block; kk += simd_size) {
-              #if defined(HAVE_AVX) && defined(__AVX__)
-              if constexpr (std::is_same_v<AccT, float> && simd_size == 8) {
-                // Use AVX optimized dot product
-                c_block[ii * block_size + jj] += 
-                  simd::avx_dot_product8(a_block + ii * block_size + kk, 
-                                       b_block + jj * block_size + kk);
-              } else {
-                // Fallback to original code
-                auto av = simd::load<AccT, simd_size>(a_block + ii * block_size + kk);
-                auto bv = simd::load<AccT, simd_size>(b_block + jj * block_size + kk);
-                c_block[ii * block_size + jj] += simd::sum(av * bv);
-              }
-            #else
-              // Original code
-              auto av = simd::load<AccT, simd_size>(a_block + ii * block_size + kk);
-              auto bv = simd::load<AccT, simd_size>(b_block + jj * block_size + kk);
+              auto av =
+                  simd::load<AccT, simd_size>(a_block + ii * block_size + kk);
+              auto bv =
+                  simd::load<AccT, simd_size>(b_block + jj * block_size + kk);
               c_block[ii * block_size + jj] += simd::sum(av * bv);
-            #endif
             }
             for (; kk < last_k_block_size; ++kk) {
               c_block[ii * block_size + jj] +=
@@ -157,79 +121,16 @@ void simd_gemm(
       }
 
       // Store
-      // Add a static variable to track when the optimized store is used
-      static bool avx_store_printed = false;
-
-      // Replace the "Store" section in simd_gemm with:
-      // Store
-      #if defined(HAVE_AVX) && defined(__AVX__)
-      if constexpr (std::is_same_v<AccT, float>) {
-          if (!avx_store_printed) {
-              fprintf(stderr, "INFO: Using AVX-optimized store operations\n");
-              avx_store_printed = true;
+      for (int ii = 0; ii < block_size && i * block_size + ii < M; ++ii) {
+        for (int jj = 0; jj < block_size && j * block_size + jj < N; ++jj) {
+          auto c_idx = (i * block_size + ii) * N + j * block_size + jj;
+          if (beta != 0) {
+            c[c_idx] = static_cast<T>(
+                alpha * c_block[ii * block_size + jj] + beta * c[c_idx]);
+          } else {
+            c[c_idx] = static_cast<T>(alpha * c_block[ii * block_size + jj]);
           }
-          
-          // Process 8 elements at a time for the scaling/addition
-          for (int ii = 0; ii < block_size && i * block_size + ii < M; ++ii) {
-              const int row_offset = (i * block_size + ii) * N + j * block_size;
-              const int block_row_offset = ii * block_size;
-              
-              int jj = 0;
-              for (; jj + 7 < block_size && j * block_size + jj + 7 < N; jj += 8) {
-                  float temp[8];
-                  
-                  if (beta != 0) {
-                      // Load 8 values from c_block
-                      __m256 block_vals = _mm256_loadu_ps(&c_block[block_row_offset + jj]);
-                      
-                      // Convert original values to float and load
-                      float orig_vals[8];
-                      for (int k = 0; k < 8; k++) {
-                          orig_vals[k] = static_cast<float>(c[row_offset + jj + k]);
-                      }
-                      __m256 orig_vals_vec = _mm256_loadu_ps(orig_vals);
-                      
-                      // Apply alpha and beta using AVX
-                      __m256 result = simd::avx_scale_add_floats(block_vals, alpha, orig_vals_vec, beta);
-                      _mm256_storeu_ps(temp, result);
-                  } else {
-                      // Just scale by alpha
-                      __m256 block_vals = _mm256_loadu_ps(&c_block[block_row_offset + jj]);
-                      __m256 result = simd::avx_scale_floats(block_vals, alpha);
-                      _mm256_storeu_ps(temp, result);
-                  }
-                  
-                  // Store results with manual conversion
-                  for (int k = 0; k < 8; k++) {
-                      c[row_offset + jj + k] = static_cast<T>(temp[k]);
-                  }
-              }
-              
-              // Handle remaining elements
-              for (; jj < block_size && j * block_size + jj < N; ++jj) {
-                  if (beta != 0) {
-                      c[row_offset + jj] = static_cast<T>(
-                          alpha * c_block[block_row_offset + jj] + beta * c[row_offset + jj]);
-                  } else {
-                      c[row_offset + jj] = static_cast<T>(alpha * c_block[block_row_offset + jj]);
-                  }
-              }
-          }
-      } else
-      #endif
-      {
-          // Original store code
-          for (int ii = 0; ii < block_size && i * block_size + ii < M; ++ii) {
-              for (int jj = 0; jj < block_size && j * block_size + jj < N; ++jj) {
-                  auto c_idx = (i * block_size + ii) * N + j * block_size + jj;
-                  if (beta != 0) {
-                      c[c_idx] = static_cast<T>(
-                          alpha * c_block[ii * block_size + jj] + beta * c[c_idx]);
-                  } else {
-                      c[c_idx] = static_cast<T>(alpha * c_block[ii * block_size + jj]);
-                  }
-              }
-          }
+        }
       }
     }
   }

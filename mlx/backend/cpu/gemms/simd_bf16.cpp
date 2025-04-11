@@ -2,7 +2,12 @@
 
 #include "mlx/backend/common/utils.h"
 #include "mlx/backend/cpu/gemm.h"
+
+#ifdef HAVE_AVX
+#include "mlx/backend/cpu/gemms/avx_simd_gemm.h"
+#else
 #include "mlx/backend/cpu/gemms/simd_gemm.h"
+#endif
 
 namespace mlx::core {
 
