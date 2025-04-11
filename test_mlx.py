@@ -26,7 +26,7 @@ def benchmark(dtype, sizes, warumup=25, bench_runs=100):
 
     return df_bench
 
-sizes = [2**i for i in range(4, 9)]
+sizes = [2**i for i in range(4, 11)]
 dtypes = [mx.float16, mx.float32]
 
 df_result = pd.DataFrame()

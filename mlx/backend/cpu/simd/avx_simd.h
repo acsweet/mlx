@@ -2943,16 +2943,16 @@ inline Simd<bool, 4> operator||(Simd<uint32_t, 4> a, Simd<uint32_t, 4> b) {
         return product;
     }
 
-    template <>
-    inline double prod<double, 4>(Simd<double, 4> x) {
-        alignas(32) double values[4];
-        _mm256_store_pd(values, x.value);
-        double product = 1.0;
-        for (int i = 0; i < 4; i++) {
-            product *= values[i];
-        }
-        return product;
-    }
+    // template <>
+    // inline double prod<double, 4>(Simd<double, 4> x) {
+    //     alignas(32) double values[4];
+    //     _mm256_store_pd(values, x.value);
+    //     double product = 1.0;
+    //     for (int i = 0; i < 4; i++) {
+    //         product *= values[i];
+    //     }
+    //     return product;
+    // }
 
     template <>
     inline int prod<int, 8>(Simd<int, 8> x) {
@@ -3136,12 +3136,12 @@ inline Simd<bool, 4> operator||(Simd<uint32_t, 4> a, Simd<uint32_t, 4> b) {
         return max_val;
     }
 
-    template <>
-    inline double sum<double, 4>(Simd<double, 4> x) {
-        alignas(32) double values[4];
-        _mm256_store_pd(values, x.value);
-        return values[0] + values[1] + values[2] + values[3];
-    }
+    // template <>
+    // inline double sum<double, 4>(Simd<double, 4> x) {
+    //     alignas(32) double values[4];
+    //     _mm256_store_pd(values, x.value);
+    //     return values[0] + values[1] + values[2] + values[3];
+    // }
 
     template <>
     inline double prod<double, 4>(Simd<double, 4> x) {
