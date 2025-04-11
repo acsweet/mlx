@@ -42,8 +42,6 @@ template <typename T, int N> T sum(Simd<T, N> x);
 template <typename T, int N> T max(Simd<T, N> x);
 template <typename T, int N> T min(Simd<T, N> x);
 template <typename T, int N> T prod(Simd<T, N> x);
-// template <int N> bool all(Simd<bool, N> x);
-// template <int N> bool any(Simd<bool, N> x);
 
 // ====== SIMD STRUCT DEFINITIONS ======
 
@@ -1003,7 +1001,7 @@ inline Simd<bool, 4> operator*(Simd<bool, 4> a, Simd<bool, 4> b) {
 }
 
 inline Simd<bool, 4> operator/(Simd<bool, 4> a, Simd<bool, 4> b) {
-    return Simd<bool, 4>(_mm_andnot_ps(b.value, a.value)); // Same as -
+    return Simd<bool, 4>(_mm_andnot_ps(b.value, a.value));
 }
 
 inline Simd<bool, 4> operator-(Simd<bool, 4> a) {
@@ -1542,1612 +1540,1585 @@ inline Simd<bool, 4> operator||(Simd<uint32_t, 4> a, Simd<uint32_t, 4> b) {
     return Simd<bool, 4>(_mm_or_ps(a_bool, b_bool));
 }
 
-// Continue from previous code...
-    // Logical operations for double 4-wide
-    inline Simd<bool, 4> operator&&(Simd<double, 4> a, Simd<double, 4> b) {
-        __m256d a_bool = _mm256_cmp_pd(a.value, _mm256_setzero_pd(), _CMP_NEQ_OQ);
-        __m256d b_bool = _mm256_cmp_pd(b.value, _mm256_setzero_pd(), _CMP_NEQ_OQ);
-        
-        // Convert to bool format
-        __m128 low = _mm_castpd_ps(_mm256_extractf128_pd(a_bool, 0));
-        __m128 high = _mm_castpd_ps(_mm256_extractf128_pd(a_bool, 1));
-        __m128 a_ps = _mm_shuffle_ps(low, high, _MM_SHUFFLE(2, 0, 2, 0));
-        
-        low = _mm_castpd_ps(_mm256_extractf128_pd(b_bool, 0));
-        high = _mm_castpd_ps(_mm256_extractf128_pd(b_bool, 1));
-        __m128 b_ps = _mm_shuffle_ps(low, high, _MM_SHUFFLE(2, 0, 2, 0));
-        
-        return Simd<bool, 4>(_mm_and_ps(a_ps, b_ps));
-    }
-
-    inline Simd<bool, 4> operator||(Simd<double, 4> a, Simd<double, 4> b) {
-        __m256d a_bool = _mm256_cmp_pd(a.value, _mm256_setzero_pd(), _CMP_NEQ_OQ);
-        __m256d b_bool = _mm256_cmp_pd(b.value, _mm256_setzero_pd(), _CMP_NEQ_OQ);
-        
-        // Convert to bool format
-        __m128 low = _mm_castpd_ps(_mm256_extractf128_pd(a_bool, 0));
-        __m128 high = _mm_castpd_ps(_mm256_extractf128_pd(a_bool, 1));
-        __m128 a_ps = _mm_shuffle_ps(low, high, _MM_SHUFFLE(2, 0, 2, 0));
-        
-        low = _mm_castpd_ps(_mm256_extractf128_pd(b_bool, 0));
-        high = _mm_castpd_ps(_mm256_extractf128_pd(b_bool, 1));
-        __m128 b_ps = _mm_shuffle_ps(low, high, _MM_SHUFFLE(2, 0, 2, 0));
-        
-        return Simd<bool, 4>(_mm_or_ps(a_ps, b_ps));
-    }
-
-    // Logical operations for int64_t/uint64_t 4-wide (scalar implementation due to missing SIMD ops)
-    inline Simd<bool, 4> operator&&(Simd<int64_t, 4> a, Simd<int64_t, 4> b) {
-        alignas(32) int64_t a_array[4], b_array[4];
-        alignas(16) float result_array[4];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        _mm256_store_si256((__m256i*)b_array, b.value);
-        for (int i = 0; i < 4; i++) {
-            result_array[i] = (a_array[i] != 0 && b_array[i] != 0) ? -1.0f : 0.0f;
-        }
-        return Simd<bool, 4>(_mm_loadu_ps(result_array));
-    }
-
-    inline Simd<bool, 4> operator||(Simd<int64_t, 4> a, Simd<int64_t, 4> b) {
-        alignas(32) int64_t a_array[4], b_array[4];
-        alignas(16) float result_array[4];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        _mm256_store_si256((__m256i*)b_array, b.value);
-        for (int i = 0; i < 4; i++) {
-            result_array[i] = (a_array[i] != 0 || b_array[i] != 0) ? -1.0f : 0.0f;
-        }
-        return Simd<bool, 4>(_mm_loadu_ps(result_array));
-    }
-
-    inline Simd<bool, 4> operator&&(Simd<uint64_t, 4> a, Simd<uint64_t, 4> b) {
-        alignas(32) uint64_t a_array[4], b_array[4];
-        alignas(16) float result_array[4];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        _mm256_store_si256((__m256i*)b_array, b.value);
-        for (int i = 0; i < 4; i++) {
-            result_array[i] = (a_array[i] != 0 && b_array[i] != 0) ? -1.0f : 0.0f;
-        }
-        return Simd<bool, 4>(_mm_loadu_ps(result_array));
-    }
-
-    inline Simd<bool, 4> operator||(Simd<uint64_t, 4> a, Simd<uint64_t, 4> b) {
-        alignas(32) uint64_t a_array[4], b_array[4];
-        alignas(16) float result_array[4];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        _mm256_store_si256((__m256i*)b_array, b.value);
-        for (int i = 0; i < 4; i++) {
-            result_array[i] = (a_array[i] != 0 || b_array[i] != 0) ? -1.0f : 0.0f;
-        }
-        return Simd<bool, 4>(_mm_loadu_ps(result_array));
-    }
-
-    // Logical operations for bool types
-    inline Simd<bool, 8> operator&&(Simd<bool, 8> a, Simd<bool, 8> b) {
-        return Simd<bool, 8>(_mm256_and_ps(a.value, b.value));
-    }
-
-    inline Simd<bool, 8> operator||(Simd<bool, 8> a, Simd<bool, 8> b) {
-        return Simd<bool, 8>(_mm256_or_ps(a.value, b.value));
-    }
-
-    inline Simd<bool, 8> operator!(Simd<bool, 8> a) {
-        return Simd<bool, 8>(_mm256_xor_ps(a.value, _mm256_castsi256_ps(_mm256_set1_epi32(0xFFFFFFFF))));
-    }
-
-    inline Simd<bool, 4> operator&&(Simd<bool, 4> a, Simd<bool, 4> b) {
-        return Simd<bool, 4>(_mm_and_ps(a.value, b.value));
-    }
-
-    inline Simd<bool, 4> operator||(Simd<bool, 4> a, Simd<bool, 4> b) {
-        return Simd<bool, 4>(_mm_or_ps(a.value, b.value));
-    }
-
-    inline Simd<bool, 4> operator!(Simd<bool, 4> a) {
-        return Simd<bool, 4>(_mm_xor_ps(a.value, _mm_castsi128_ps(_mm_set1_epi32(0xFFFFFFFF))));
-    }
-
-    // Logical NOT for int (8-wide)
-    inline Simd<int, 8> operator!(Simd<int, 8> a) {
-        // Compare with zero to get a boolean result, then convert to int
-        auto is_zero = (a == Simd<int, 8>(0));
-        // Convert bool to int (true -> 1, false -> 0)
-        alignas(32) float bool_vals[8];
-        alignas(32) int result[8];
-        _mm256_store_ps(bool_vals, is_zero.value);
-        for (int i = 0; i < 8; i++) {
-            result[i] = (bool_vals[i] != 0.0f) ? 1 : 0;
-        }
-        return load<int, 8>(result);
-    }
-
-    // Logical NOT for int (4-wide)
-    inline Simd<int, 4> operator!(Simd<int, 4> a) {
-        auto is_zero = (a == Simd<int, 4>(0));
-        alignas(16) float bool_vals[4];
-        alignas(16) int result[4];
-        _mm_store_ps(bool_vals, is_zero.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = (bool_vals[i] != 0.0f) ? 1 : 0;
-        }
-        return load<int, 4>(result);
-    }
-
-    // Logical NOT for uint32_t (8-wide)
-    inline Simd<uint32_t, 8> operator!(Simd<uint32_t, 8> a) {
-        auto is_zero = (a == Simd<uint32_t, 8>(0));
-        alignas(32) float bool_vals[8];
-        alignas(32) uint32_t result[8];
-        _mm256_store_ps(bool_vals, is_zero.value);
-        for (int i = 0; i < 8; i++) {
-            result[i] = (bool_vals[i] != 0.0f) ? 1 : 0;
-        }
-        return load<uint32_t, 8>(result);
-    }
-
-    // Logical NOT for uint32_t (4-wide)
-    inline Simd<uint32_t, 4> operator!(Simd<uint32_t, 4> a) {
-        auto is_zero = (a == Simd<uint32_t, 4>(0));
-        alignas(16) float bool_vals[4];
-        alignas(16) uint32_t result[4];
-        _mm_store_ps(bool_vals, is_zero.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = (bool_vals[i] != 0.0f) ? 1 : 0;
-        }
-        return load<uint32_t, 4>(result);
-    }
-
-    // Logical NOT for int64_t (4-wide)
-    inline Simd<int64_t, 4> operator!(Simd<int64_t, 4> a) {
-        alignas(32) int64_t values[4], result[4];
-        _mm256_store_si256((__m256i*)values, a.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = (values[i] == 0) ? 1 : 0;
-        }
-        return load<int64_t, 4>(result);
-    }
-
-    // Logical NOT for uint64_t (4-wide)
-    inline Simd<uint64_t, 4> operator!(Simd<uint64_t, 4> a) {
-        alignas(32) uint64_t values[4], result[4];
-        _mm256_store_si256((__m256i*)values, a.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = (values[i] == 0) ? 1 : 0;
-        }
-        return load<uint64_t, 4>(result);
-    }
-
-    // Logical NOT for double (4-wide)
-    inline Simd<double, 4> operator!(Simd<double, 4> a) {
-        alignas(32) double values[4], result[4];
-        _mm256_store_pd(values, a.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = (values[i] == 0.0) ? 1.0 : 0.0;
-        }
-        return load<double, 4>(result);
-    }
-
-    // ====== MATH FUNCTIONS ======
-
-    // Unary math functions for float 8-wide - some can use AVX instructions directly
-    inline Simd<float, 8> sqrt(Simd<float, 8> a) {
-        return Simd<float, 8>(_mm256_sqrt_ps(a.value));
-    }
-
-    inline Simd<float, 8> abs(Simd<float, 8> a) {
-        // Clear the sign bit
-        __m256 sign_mask = _mm256_set1_ps(-0.0f);  // 0x80000000
-        return Simd<float, 8>(_mm256_andnot_ps(sign_mask, a.value));
-    }
-
-    inline Simd<float, 8> floor(Simd<float, 8> a) {
-        return Simd<float, 8>(_mm256_floor_ps(a.value));
-    }
-
-    inline Simd<float, 8> ceil(Simd<float, 8> a) {
-        return Simd<float, 8>(_mm256_ceil_ps(a.value));
-    }
-
-    inline Simd<float, 8> round(Simd<float, 8> a) {
-        return Simd<float, 8>(_mm256_round_ps(a.value, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
-    }
-
-    // Helper macro for scalar math functions without direct AVX implementation
-    #define DEFINE_SCALAR_MATH_FUNC(FUNC, TYPE, SIZE) \
-    inline Simd<TYPE, SIZE> FUNC(Simd<TYPE, SIZE> a) { \
-        alignas(32) TYPE a_array[SIZE], result[SIZE]; \
-        store(a_array, a); \
-        for (int i = 0; i < SIZE; i++) { \
-            result[i] = std::FUNC(a_array[i]); \
-        } \
-        return load<TYPE, SIZE>(result); \
-    }
-
-    // Common scalar math functions for float 8-wide
-    DEFINE_SCALAR_MATH_FUNC(exp, float, 8)
-    DEFINE_SCALAR_MATH_FUNC(log, float, 8)
-    DEFINE_SCALAR_MATH_FUNC(log10, float, 8)
-    DEFINE_SCALAR_MATH_FUNC(log2, float, 8)
-    DEFINE_SCALAR_MATH_FUNC(log1p, float, 8)
-    DEFINE_SCALAR_MATH_FUNC(sin, float, 8)
-    DEFINE_SCALAR_MATH_FUNC(cos, float, 8)
-    DEFINE_SCALAR_MATH_FUNC(tan, float, 8)
-    DEFINE_SCALAR_MATH_FUNC(asin, float, 8)
-    DEFINE_SCALAR_MATH_FUNC(acos, float, 8)
-    DEFINE_SCALAR_MATH_FUNC(atan, float, 8)
-    DEFINE_SCALAR_MATH_FUNC(sinh, float, 8)
-    DEFINE_SCALAR_MATH_FUNC(cosh, float, 8)
-    DEFINE_SCALAR_MATH_FUNC(tanh, float, 8)
-    DEFINE_SCALAR_MATH_FUNC(expm1, float, 8)
-    DEFINE_SCALAR_MATH_FUNC(asinh, float, 8)
-    DEFINE_SCALAR_MATH_FUNC(acosh, float, 8)
-    DEFINE_SCALAR_MATH_FUNC(atanh, float, 8)
-
-    // Unary math functions for float 4-wide
-    inline Simd<float, 4> sqrt(Simd<float, 4> a) {
-        return Simd<float, 4>(_mm_sqrt_ps(a.value));
-    }
-
-    inline Simd<float, 4> abs(Simd<float, 4> a) {
-        __m128 sign_mask = _mm_set1_ps(-0.0f);
-        return Simd<float, 4>(_mm_andnot_ps(sign_mask, a.value));
-    }
-
-    // Math functions for float 4-wide
-    DEFINE_SCALAR_MATH_FUNC(floor, float, 4)
-    DEFINE_SCALAR_MATH_FUNC(ceil, float, 4)
-    DEFINE_SCALAR_MATH_FUNC(round, float, 4)
-    DEFINE_SCALAR_MATH_FUNC(exp, float, 4)
-    DEFINE_SCALAR_MATH_FUNC(log, float, 4)
-    DEFINE_SCALAR_MATH_FUNC(log10, float, 4)
-    DEFINE_SCALAR_MATH_FUNC(log2, float, 4)
-    DEFINE_SCALAR_MATH_FUNC(log1p, float, 4)
-    DEFINE_SCALAR_MATH_FUNC(sin, float, 4)
-    DEFINE_SCALAR_MATH_FUNC(cos, float, 4)
-    DEFINE_SCALAR_MATH_FUNC(tan, float, 4)
-    DEFINE_SCALAR_MATH_FUNC(asin, float, 4)
-    DEFINE_SCALAR_MATH_FUNC(acos, float, 4)
-    DEFINE_SCALAR_MATH_FUNC(atan, float, 4)
-    DEFINE_SCALAR_MATH_FUNC(sinh, float, 4)
-    DEFINE_SCALAR_MATH_FUNC(cosh, float, 4)
-    DEFINE_SCALAR_MATH_FUNC(tanh, float, 4)
-    DEFINE_SCALAR_MATH_FUNC(expm1, float, 4)
-    DEFINE_SCALAR_MATH_FUNC(asinh, float, 4)
-    DEFINE_SCALAR_MATH_FUNC(acosh, float, 4)
-    DEFINE_SCALAR_MATH_FUNC(atanh, float, 4)
-
-    // Math functions for double 4-wide - some can use AVX instructions directly
-    inline Simd<double, 4> sqrt(Simd<double, 4> a) {
-        return Simd<double, 4>(_mm256_sqrt_pd(a.value));
-    }
-
-    inline Simd<double, 4> abs(Simd<double, 4> a) {
-        __m256d sign_mask = _mm256_set1_pd(-0.0);
-        return Simd<double, 4>(_mm256_andnot_pd(sign_mask, a.value));
-    }
-
-    inline Simd<double, 4> floor(Simd<double, 4> a) {
-        return Simd<double, 4>(_mm256_floor_pd(a.value));
-    }
-
-    inline Simd<double, 4> ceil(Simd<double, 4> a) {
-        return Simd<double, 4>(_mm256_ceil_pd(a.value));
-    }
-
-    inline Simd<double, 4> round(Simd<double, 4> a) {
-        return Simd<double, 4>(_mm256_round_pd(a.value, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
-    }
-
-    // Common scalar math functions for double 4-wide
-    DEFINE_SCALAR_MATH_FUNC(exp, double, 4)
-    DEFINE_SCALAR_MATH_FUNC(log, double, 4)
-    DEFINE_SCALAR_MATH_FUNC(log10, double, 4)
-    DEFINE_SCALAR_MATH_FUNC(log2, double, 4)
-    DEFINE_SCALAR_MATH_FUNC(log1p, double, 4)
-    DEFINE_SCALAR_MATH_FUNC(sin, double, 4)
-    DEFINE_SCALAR_MATH_FUNC(cos, double, 4)
-    DEFINE_SCALAR_MATH_FUNC(tan, double, 4)
-    DEFINE_SCALAR_MATH_FUNC(asin, double, 4)
-    DEFINE_SCALAR_MATH_FUNC(acos, double, 4)
-    DEFINE_SCALAR_MATH_FUNC(atan, double, 4)
-    DEFINE_SCALAR_MATH_FUNC(sinh, double, 4)
-    DEFINE_SCALAR_MATH_FUNC(cosh, double, 4)
-    DEFINE_SCALAR_MATH_FUNC(tanh, double, 4)
-    DEFINE_SCALAR_MATH_FUNC(expm1, double, 4)
-    DEFINE_SCALAR_MATH_FUNC(asinh, double, 4)
-    DEFINE_SCALAR_MATH_FUNC(acosh, double, 4)
-    DEFINE_SCALAR_MATH_FUNC(atanh, double, 4)
-
-    // Math functions for integer types
-    inline Simd<int, 8> abs(Simd<int, 8> a) {
-        return Simd<int, 8>(_mm256_abs_epi32(a.value));
-    }
-
-    inline Simd<int, 4> abs(Simd<int, 4> a) {
-        return Simd<int, 4>(_mm_abs_epi32(a.value));
-    }
-
-    // Abs for uint32_t is a no-op (already positive)
-    inline Simd<uint32_t, 8> abs(Simd<uint32_t, 8> a) {
-        return a;
-    }
-
-    inline Simd<uint32_t, 4> abs(Simd<uint32_t, 4> a) {
-        return a;
-    }
-
-    // Abs for int64_t and uint64_t
-    inline Simd<int64_t, 4> abs(Simd<int64_t, 4> a) {
-        alignas(32) int64_t a_array[4], result[4];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = std::abs(a_array[i]);
-        }
-        return load<int64_t, 4>(result);
-    }
-
-    inline Simd<uint64_t, 4> abs(Simd<uint64_t, 4> a) {
-        return a; // No-op for unsigned
-    }
-
-    // isnan implementation
-    inline Simd<bool, 8> isnan(Simd<float, 8> a) {
-        return Simd<bool, 8>(_mm256_cmp_ps(a.value, a.value, _CMP_UNORD_Q));
-    }
-
-    inline Simd<bool, 4> isnan(Simd<float, 4> a) {
-        return Simd<bool, 4>(_mm_cmpunord_ps(a.value, a.value));
-    }
-
-    inline Simd<bool, 4> isnan(Simd<double, 4> a) {
-        __m256d cmp = _mm256_cmp_pd(a.value, a.value, _CMP_UNORD_Q);
-        __m128 low = _mm_castpd_ps(_mm256_extractf128_pd(cmp, 0));
-        __m128 high = _mm_castpd_ps(_mm256_extractf128_pd(cmp, 1));
-        return Simd<bool, 4>(_mm_shuffle_ps(low, high, _MM_SHUFFLE(2, 0, 2, 0)));
-    }
-
-    // Binary math functions with two vector arguments
-    inline Simd<float, 8> atan2(Simd<float, 8> y, Simd<float, 8> x) {
-        alignas(32) float y_array[8], x_array[8], result[8];
-        _mm256_store_ps(y_array, y.value);
-        _mm256_store_ps(x_array, x.value);
-        for (int i = 0; i < 8; i++) {
-            result[i] = std::atan2(y_array[i], x_array[i]);
-        }
-        return load<float, 8>(result);
-    }
-
-    inline Simd<double, 4> atan2(Simd<double, 4> y, Simd<double, 4> x) {
-        alignas(32) double y_array[4], x_array[4], result[4];
-        _mm256_store_pd(y_array, y.value);
-        _mm256_store_pd(x_array, x.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = std::atan2(y_array[i], x_array[i]);
-        }
-        return load<double, 4>(result);
-    }
-
-    inline Simd<float, 8> pow(Simd<float, 8> a, Simd<float, 8> b) {
-        alignas(32) float a_array[8], b_array[8], result[8];
-        _mm256_store_ps(a_array, a.value);
-        _mm256_store_ps(b_array, b.value);
-        for (int i = 0; i < 8; i++) {
-            result[i] = std::pow(a_array[i], b_array[i]);
-        }
-        return load<float, 8>(result);
-    }
-
-    inline Simd<double, 4> pow(Simd<double, 4> a, Simd<double, 4> b) {
-        alignas(32) double a_array[4], b_array[4], result[4];
-        _mm256_store_pd(a_array, a.value);
-        _mm256_store_pd(b_array, b.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = std::pow(a_array[i], b_array[i]);
-        }
-        return load<double, 4>(result);
-    }
-
-    // Integer pow implementations
-    inline Simd<int, 8> pow(Simd<int, 8> a, Simd<int, 8> b) {
-        alignas(32) int a_array[8], b_array[8], result[8];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        _mm256_store_si256((__m256i*)b_array, b.value);
-        for (int i = 0; i < 8; i++) {
-            int base = a_array[i];
-            int exp = b_array[i];
-            int res = 1;
-            while (exp > 0) {
-                if (exp & 1) res *= base;
-                exp >>= 1;
-                base *= base;
-            }
-            result[i] = res;
-        }
-        return load<int, 8>(result);
-    }
-
-    // Reciprocal square root
-    inline Simd<float, 8> rsqrt(Simd<float, 8> x) {
-        return Simd<float, 8>(_mm256_rsqrt_ps(x.value));
-    }
-
-    inline Simd<float, 4> rsqrt(Simd<float, 4> x) {
-        return Simd<float, 4>(_mm_rsqrt_ps(x.value));
-    }
-
-    inline Simd<double, 4> rsqrt(Simd<double, 4> x) {
-        // No direct AVX instruction for double rsqrt
-        return Simd<double, 4>(1.0) / sqrt(x);
-    }
-
-    // Reciprocal
-    inline Simd<float, 8> recip(Simd<float, 8> x) {
-        return Simd<float, 8>(_mm256_rcp_ps(x.value));
-    }
-
-    inline Simd<float, 4> recip(Simd<float, 4> x) {
-        return Simd<float, 4>(_mm_rcp_ps(x.value));
-    }
-
-    inline Simd<double, 4> recip(Simd<double, 4> x) {
-        // No direct AVX instruction for double recip
-        return Simd<double, 4>(1.0) / x;
-    }
-
-    // Round to nearest integer
-    inline Simd<float, 8> rint(Simd<float, 8> x) {
-        return round(x);  // Using your existing round implementation
-    }
-
-    inline Simd<float, 4> rint(Simd<float, 4> x) {
-        return round(x);  // Using your existing round implementation
-    }
-
-    inline Simd<double, 4> rint(Simd<double, 4> x) {
-        return round(x);  // Using your existing round implementation
-    }
-
-    // Remainder operation
-    inline Simd<float, 8> remainder(Simd<float, 8> a, Simd<float, 8> b) {
-        alignas(32) float a_array[8], b_array[8], result[8];
-        _mm256_store_ps(a_array, a.value);
-        _mm256_store_ps(b_array, b.value);
-        for (int i = 0; i < 8; i++) {
-            result[i] = std::remainder(a_array[i], b_array[i]);
-        }
-        return load<float, 8>(result);
-    }
-
-    inline Simd<float, 4> remainder(Simd<float, 4> a, Simd<float, 4> b) {
-        alignas(16) float a_array[4], b_array[4], result[4];
-        _mm_store_ps(a_array, a.value);
-        _mm_store_ps(b_array, b.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = std::remainder(a_array[i], b_array[i]);
-        }
-        return load<float, 4>(result);
-    }
-
-    inline Simd<double, 4> remainder(Simd<double, 4> a, Simd<double, 4> b) {
-        alignas(32) double a_array[4], b_array[4], result[4];
-        _mm256_store_pd(a_array, a.value);
-        _mm256_store_pd(b_array, b.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = std::remainder(a_array[i], b_array[i]);
-        }
-        return load<double, 4>(result);
-    }
-
-    inline Simd<int, 8> remainder(Simd<int, 8> a, Simd<int, 8> b) {
-        alignas(32) int a_array[8], b_array[8], result[8];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        _mm256_store_si256((__m256i*)b_array, b.value);
-        for (int i = 0; i < 8; i++) {
-            // Integer remainder is modulo
-            result[i] = a_array[i] % b_array[i];
-        }
-        return load<int, 8>(result);
-    }
-
-    inline Simd<int, 4> remainder(Simd<int, 4> a, Simd<int, 4> b) {
-        alignas(16) int a_array[4], b_array[4], result[4];
-        _mm_store_si128((__m128i*)a_array, a.value);
-        _mm_store_si128((__m128i*)b_array, b.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = a_array[i] % b_array[i];
-        }
-        return load<int, 4>(result);
-    }
-
-    // Remainder implementation for uint32_t (8-wide)
-    inline Simd<uint32_t, 8> remainder(Simd<uint32_t, 8> a, Simd<uint32_t, 8> b) {
-        alignas(32) uint32_t a_array[8], b_array[8], result[8];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        _mm256_store_si256((__m256i*)b_array, b.value);
-        for (int i = 0; i < 8; i++) {
-            // For unsigned integers, remainder is just modulo
-            result[i] = (b_array[i] != 0) ? a_array[i] % b_array[i] : 0;
-        }
-        return load<uint32_t, 8>(result);
-    }
-
-    // Remainder implementation for uint32_t (4-wide)
-    inline Simd<uint32_t, 4> remainder(Simd<uint32_t, 4> a, Simd<uint32_t, 4> b) {
-        alignas(16) uint32_t a_array[4], b_array[4], result[4];
-        _mm_store_si128((__m128i*)a_array, a.value);
-        _mm_store_si128((__m128i*)b_array, b.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = (b_array[i] != 0) ? a_array[i] % b_array[i] : 0;
-        }
-        return load<uint32_t, 4>(result);
-    }
-
-    // Remainder implementation for int64_t (4-wide)
-    inline Simd<int64_t, 4> remainder(Simd<int64_t, 4> a, Simd<int64_t, 4> b) {
-        alignas(32) int64_t a_array[4], b_array[4], result[4];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        _mm256_store_si256((__m256i*)b_array, b.value);
-        for (int i = 0; i < 4; i++) {
-            // Check for division by zero
-            result[i] = (b_array[i] != 0) ? a_array[i] % b_array[i] : 0;
-        }
-        return load<int64_t, 4>(result);
-    }
-
-    // Remainder implementation for uint64_t (4-wide)
-    inline Simd<uint64_t, 4> remainder(Simd<uint64_t, 4> a, Simd<uint64_t, 4> b) {
-        alignas(32) uint64_t a_array[4], b_array[4], result[4];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        _mm256_store_si256((__m256i*)b_array, b.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = (b_array[i] != 0) ? a_array[i] % b_array[i] : 0;
-        }
-        return load<uint64_t, 4>(result);
-    }
-
-    // Remainder implementation for bool (8-wide)
-    inline Simd<bool, 8> remainder(Simd<bool, 8> a, Simd<bool, 8> b) {
-        // For booleans, remainder doesn't make much sense, but we can define
-        // it as: a % b = a when b is true, 0 when b is false
-        return a & b;
-    }
-
-    // Remainder implementation for bool (4-wide)
-    inline Simd<bool, 4> remainder(Simd<bool, 4> a, Simd<bool, 4> b) {
-        return a & b;
-    }
-
-    // Comparison operators for int64_t (4-wide)
-    inline Simd<bool, 4> operator==(Simd<int64_t, 4> a, Simd<int64_t, 4> b) {
-        alignas(32) int64_t a_array[4], b_array[4];
-        alignas(16) float result[4];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        _mm256_store_si256((__m256i*)b_array, b.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = (a_array[i] == b_array[i]) ? -1.0f : 0.0f;
-        }
-        return Simd<bool, 4>(_mm_loadu_ps(result));
-    }
-
-    inline Simd<bool, 4> operator!=(Simd<int64_t, 4> a, Simd<int64_t, 4> b) {
-        alignas(32) int64_t a_array[4], b_array[4];
-        alignas(16) float result[4];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        _mm256_store_si256((__m256i*)b_array, b.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = (a_array[i] != b_array[i]) ? -1.0f : 0.0f;
-        }
-        return Simd<bool, 4>(_mm_loadu_ps(result));
-    }
-
-    inline Simd<bool, 4> operator<(Simd<int64_t, 4> a, Simd<int64_t, 4> b) {
-        alignas(32) int64_t a_array[4], b_array[4];
-        alignas(16) float result[4];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        _mm256_store_si256((__m256i*)b_array, b.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = (a_array[i] < b_array[i]) ? -1.0f : 0.0f;
-        }
-        return Simd<bool, 4>(_mm_loadu_ps(result));
-    }
-
-    inline Simd<bool, 4> operator<=(Simd<int64_t, 4> a, Simd<int64_t, 4> b) {
-        alignas(32) int64_t a_array[4], b_array[4];
-        alignas(16) float result[4];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        _mm256_store_si256((__m256i*)b_array, b.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = (a_array[i] <= b_array[i]) ? -1.0f : 0.0f;
-        }
-        return Simd<bool, 4>(_mm_loadu_ps(result));
-    }
-
-    inline Simd<bool, 4> operator>(Simd<int64_t, 4> a, Simd<int64_t, 4> b) {
-        alignas(32) int64_t a_array[4], b_array[4];
-        alignas(16) float result[4];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        _mm256_store_si256((__m256i*)b_array, b.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = (a_array[i] > b_array[i]) ? -1.0f : 0.0f;
-        }
-        return Simd<bool, 4>(_mm_loadu_ps(result));
-    }
-
-    inline Simd<bool, 4> operator>=(Simd<int64_t, 4> a, Simd<int64_t, 4> b) {
-        alignas(32) int64_t a_array[4], b_array[4];
-        alignas(16) float result[4];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        _mm256_store_si256((__m256i*)b_array, b.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = (a_array[i] >= b_array[i]) ? -1.0f : 0.0f;
-        }
-        return Simd<bool, 4>(_mm_loadu_ps(result));
-    }
-
-    // Comparison operators for uint64_t (4-wide)
-    inline Simd<bool, 4> operator==(Simd<uint64_t, 4> a, Simd<uint64_t, 4> b) {
-        alignas(32) uint64_t a_array[4], b_array[4];
-        alignas(16) float result[4];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        _mm256_store_si256((__m256i*)b_array, b.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = (a_array[i] == b_array[i]) ? -1.0f : 0.0f;
-        }
-        return Simd<bool, 4>(_mm_loadu_ps(result));
-    }
-
-    inline Simd<bool, 4> operator!=(Simd<uint64_t, 4> a, Simd<uint64_t, 4> b) {
-        alignas(32) uint64_t a_array[4], b_array[4];
-        alignas(16) float result[4];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        _mm256_store_si256((__m256i*)b_array, b.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = (a_array[i] != b_array[i]) ? -1.0f : 0.0f;
-        }
-        return Simd<bool, 4>(_mm_loadu_ps(result));
-    }
-
-    inline Simd<bool, 4> operator<(Simd<uint64_t, 4> a, Simd<uint64_t, 4> b) {
-        alignas(32) uint64_t a_array[4], b_array[4];
-        alignas(16) float result[4];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        _mm256_store_si256((__m256i*)b_array, b.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = (a_array[i] < b_array[i]) ? -1.0f : 0.0f;
-        }
-        return Simd<bool, 4>(_mm_loadu_ps(result));
-    }
-
-    inline Simd<bool, 4> operator<=(Simd<uint64_t, 4> a, Simd<uint64_t, 4> b) {
-        alignas(32) uint64_t a_array[4], b_array[4];
-        alignas(16) float result[4];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        _mm256_store_si256((__m256i*)b_array, b.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = (a_array[i] <= b_array[i]) ? -1.0f : 0.0f;
-        }
-        return Simd<bool, 4>(_mm_loadu_ps(result));
-    }
-
-    inline Simd<bool, 4> operator>(Simd<uint64_t, 4> a, Simd<uint64_t, 4> b) {
-        alignas(32) uint64_t a_array[4], b_array[4];
-        alignas(16) float result[4];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        _mm256_store_si256((__m256i*)b_array, b.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = (a_array[i] > b_array[i]) ? -1.0f : 0.0f;
-        }
-        return Simd<bool, 4>(_mm_loadu_ps(result));
-    }
-
-    inline Simd<bool, 4> operator>=(Simd<uint64_t, 4> a, Simd<uint64_t, 4> b) {
-        alignas(32) uint64_t a_array[4], b_array[4];
-        alignas(16) float result[4];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        _mm256_store_si256((__m256i*)b_array, b.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = (a_array[i] >= b_array[i]) ? -1.0f : 0.0f;
-        }
-        return Simd<bool, 4>(_mm_loadu_ps(result));
-    }
-
-    // ====== Min/Max Functions ======
-
-    // min/max for float 8-wide
-    inline Simd<float, 8> minimum(Simd<float, 8> a, Simd<float, 8> b) {
-        return Simd<float, 8>(_mm256_min_ps(a.value, b.value));
-    }
-
-    inline Simd<float, 8> maximum(Simd<float, 8> a, Simd<float, 8> b) {
-        return Simd<float, 8>(_mm256_max_ps(a.value, b.value));
-    }
-
-    // min/max for float 4-wide
-    inline Simd<float, 4> minimum(Simd<float, 4> a, Simd<float, 4> b) {
-        return Simd<float, 4>(_mm_min_ps(a.value, b.value));
-    }
-
-    inline Simd<float, 4> maximum(Simd<float, 4> a, Simd<float, 4> b) {
-        return Simd<float, 4>(_mm_max_ps(a.value, b.value));
-    }
-
-    // min/max for double 4-wide
-    inline Simd<double, 4> minimum(Simd<double, 4> a, Simd<double, 4> b) {
-        return Simd<double, 4>(_mm256_min_pd(a.value, b.value));
-    }
-
-    inline Simd<double, 4> maximum(Simd<double, 4> a, Simd<double, 4> b) {
-        return Simd<double, 4>(_mm256_max_pd(a.value, b.value));
-    }
-
-    // min/max for int 8-wide
-    inline Simd<int, 8> minimum(Simd<int, 8> a, Simd<int, 8> b) {
-        return Simd<int, 8>(_mm256_min_epi32(a.value, b.value));
-    }
-
-    inline Simd<int, 8> maximum(Simd<int, 8> a, Simd<int, 8> b) {
-        return Simd<int, 8>(_mm256_max_epi32(a.value, b.value));
-    }
-
-    // min/max for int 4-wide
-    inline Simd<int, 4> minimum(Simd<int, 4> a, Simd<int, 4> b) {
-        return Simd<int, 4>(_mm_min_epi32(a.value, b.value));
-    }
-
-    inline Simd<int, 4> maximum(Simd<int, 4> a, Simd<int, 4> b) {
-        return Simd<int, 4>(_mm_max_epi32(a.value, b.value));
-    }
-
-    // min/max for uint32_t 8-wide
-    inline Simd<uint32_t, 8> minimum(Simd<uint32_t, 8> a, Simd<uint32_t, 8> b) {
-        return Simd<uint32_t, 8>(_mm256_min_epu32(a.value, b.value));
-    }
-
-    inline Simd<uint32_t, 8> maximum(Simd<uint32_t, 8> a, Simd<uint32_t, 8> b) {
-        return Simd<uint32_t, 8>(_mm256_max_epu32(a.value, b.value));
-    }
-
-    // min/max for uint32_t 4-wide
-    inline Simd<uint32_t, 4> minimum(Simd<uint32_t, 4> a, Simd<uint32_t, 4> b) {
-        return Simd<uint32_t, 4>(_mm_min_epu32(a.value, b.value));
-    }
-
-    inline Simd<uint32_t, 4> maximum(Simd<uint32_t, 4> a, Simd<uint32_t, 4> b) {
-        return Simd<uint32_t, 4>(_mm_max_epu32(a.value, b.value));
-    }
-
-    // min/max for bool
-    inline Simd<bool, 8> maximum(Simd<bool, 8> a, Simd<bool, 8> b) {
-        // For bool, maximum is equivalent to OR
-        return Simd<bool, 8>(_mm256_or_ps(a.value, b.value));
-    }
-
-    inline Simd<bool, 4> maximum(Simd<bool, 4> a, Simd<bool, 4> b) {
-        return Simd<bool, 4>(_mm_or_ps(a.value, b.value));
-    }
-
-    inline Simd<bool, 8> minimum(Simd<bool, 8> a, Simd<bool, 8> b) {
-        // For bool, minimum is equivalent to AND
-        return Simd<bool, 8>(_mm256_and_ps(a.value, b.value));
-    }
-
-    inline Simd<bool, 4> minimum(Simd<bool, 4> a, Simd<bool, 4> b) {
-        return Simd<bool, 4>(_mm_and_ps(a.value, b.value));
-    }
-
-    // Maximum and minimum for int64_t (4-wide)
-    inline Simd<int64_t, 4> maximum(Simd<int64_t, 4> a, Simd<int64_t, 4> b) {
-        alignas(32) int64_t a_array[4], b_array[4], result[4];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        _mm256_store_si256((__m256i*)b_array, b.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = std::max(a_array[i], b_array[i]);
-        }
-        return load<int64_t, 4>(result);
-    }
-
-    inline Simd<int64_t, 4> minimum(Simd<int64_t, 4> a, Simd<int64_t, 4> b) {
-        alignas(32) int64_t a_array[4], b_array[4], result[4];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        _mm256_store_si256((__m256i*)b_array, b.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = std::min(a_array[i], b_array[i]);
-        }
-        return load<int64_t, 4>(result);
-    }
-
-    // Maximum and minimum for uint64_t (4-wide)
-    inline Simd<uint64_t, 4> maximum(Simd<uint64_t, 4> a, Simd<uint64_t, 4> b) {
-        alignas(32) uint64_t a_array[4], b_array[4], result[4];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        _mm256_store_si256((__m256i*)b_array, b.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = std::max(a_array[i], b_array[i]);
-        }
-        return load<uint64_t, 4>(result);
-    }
-
-    inline Simd<uint64_t, 4> minimum(Simd<uint64_t, 4> a, Simd<uint64_t, 4> b) {
-        alignas(32) uint64_t a_array[4], b_array[4], result[4];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        _mm256_store_si256((__m256i*)b_array, b.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = std::min(a_array[i], b_array[i]);
-        }
-        return load<uint64_t, 4>(result);
-    }
-
-    // ====== UTILITY FUNCTIONS ======
-
-    // Add a special template specialization for unsigned types
-    template <typename T, int N, typename = typename std::enable_if<std::is_unsigned<T>::value>::type>
-    inline Simd<T, N> sign(Simd<T, N> x) {
-        // For unsigned types, sign is 0 if x is 0, otherwise 1
-        auto zero = Simd<T, N>{0};
-        auto one = Simd<T, N>{1};
-        return select(x == zero, zero, one);
-    }
-
-    // Special case for bool
-    template <int N>
-    inline Simd<bool, N> sign(Simd<bool, N> x) {
-        // For bool, sign is the same as the value
-        return x;
-    }
-
-    // Add specialized versions for bool
-    // template <int N>
-    // inline Simd<bool, N> operator<<(Simd<bool, N> a, Simd<bool, N> b) {
-    //     // Convert to int, perform shift, then convert back
-    //     auto int_a = Simd<int, N>(a);
-    //     auto int_b = Simd<int, N>(b);
-    //     auto result = int_a << int_b;
-    //     return Simd<bool, N>(result != 0);
-    // }
-
-    // template <int N>
-    // inline Simd<bool, N> operator>>(Simd<bool, N> a, Simd<bool, N> b) {
-    //     auto int_a = Simd<int, N>(a);
-    //     auto int_b = Simd<int, N>(b);
-    //     auto result = int_a >> int_b;
-    //     return Simd<bool, N>(result != 0);
-    // }
-
-    // Left shift (<<) for bool 4-wide
-    inline Simd<bool, 4> operator<<(Simd<bool, 4> a, Simd<bool, 4> b) {
-        // Convert to integer first
-        Simd<int, 4> a_int(a);
-        Simd<int, 4> b_int(b);
-        // Perform the shift
-        Simd<int, 4> result = a_int << b_int;
-        // Convert back to bool (non-zero becomes true)
-        return Simd<bool, 4>(result != Simd<int, 4>(0));
-    }
-
-    // Right shift (>>) for bool 4-wide
-    inline Simd<bool, 4> operator>>(Simd<bool, 4> a, Simd<bool, 4> b) {
-        Simd<int, 4> a_int(a);
-        Simd<int, 4> b_int(b);
-        Simd<int, 4> result = a_int >> b_int;
-        return Simd<bool, 4>(result != Simd<int, 4>(0));
-    }
-
-    // Left shift (<<) for bool 8-wide
-    inline Simd<bool, 8> operator<<(Simd<bool, 8> a, Simd<bool, 8> b) {
-        Simd<int, 8> a_int(a);
-        Simd<int, 8> b_int(b);
-        Simd<int, 8> result = a_int << b_int;
-        return Simd<bool, 8>(result != Simd<int, 8>(0));
-    }
-
-    // Right shift (>>) for bool 8-wide
-    inline Simd<bool, 8> operator>>(Simd<bool, 8> a, Simd<bool, 8> b) {
-        Simd<int, 8> a_int(a);
-        Simd<int, 8> b_int(b);
-        Simd<int, 8> result = a_int >> b_int;
-        return Simd<bool, 8>(result != Simd<int, 8>(0));
-    }
-
-    // Logical NOT for float (8-wide)
-    inline Simd<bool, 8> operator!(Simd<float, 8> a) {
-        return Simd<bool, 8>(_mm256_cmp_ps(a.value, _mm256_setzero_ps(), _CMP_EQ_OQ));
-    }
-
-    // Logical NOT for float (4-wide)
-    inline Simd<bool, 4> operator!(Simd<float, 4> a) {
-        return Simd<bool, 4>(_mm_cmpeq_ps(a.value, _mm_setzero_ps()));
-    }
-
-    // Add explicit specialization for bool
-    // For pow with bool (explicitly for sizes 4 and 8 only)
-    inline Simd<bool, 4> pow(Simd<bool, 4> a, Simd<bool, 4> b) {
-        // Implementation that uses a & b
-        return a & b;
-    }
-
-    inline Simd<bool, 8> pow(Simd<bool, 8> a, Simd<bool, 8> b) {
-        // Implementation that uses a & b
-        return a & b;
-    }
-
-    // For pow with uint32_t (explicitly for sizes 4 and 8 only)
-    inline Simd<uint32_t, 4> pow(Simd<uint32_t, 4> a, Simd<uint32_t, 4> b) {
-        // Implementation from your current code
-        alignas(16) uint32_t a_array[4], b_array[4], result[4];
-        store(a_array, a);
-        store(b_array, b);
-        for (int i = 0; i < 4; i++) {
-            uint32_t base = a_array[i];
-            uint32_t exp = b_array[i];
-            uint32_t res = 1;
-            while (exp > 0) {
-                if (exp & 1) res *= base;
-                exp >>= 1;
-                base *= base;
-            }
-            result[i] = res;
-        }
-        return load<uint32_t, 4>(result);
-    }
-
-    inline Simd<uint32_t, 8> pow(Simd<uint32_t, 8> a, Simd<uint32_t, 8> b) {
-        // Same implementation but for 8-wide
-        alignas(32) uint32_t a_array[8], b_array[8], result[8];
-        store(a_array, a);
-        store(b_array, b);
-        for (int i = 0; i < 8; i++) {
-            uint32_t base = a_array[i];
-            uint32_t exp = b_array[i];
-            uint32_t res = 1;
-            while (exp > 0) {
-                if (exp & 1) res *= base;
-                exp >>= 1;
-                base *= base;
-            }
-            result[i] = res;
-        }
-        return load<uint32_t, 8>(result);
-    }
-
-    // Power implementation for int64_t (4-wide)
-    inline Simd<int64_t, 4> pow(Simd<int64_t, 4> a, Simd<int64_t, 4> b) {
-        alignas(32) int64_t a_array[4], b_array[4], result[4];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        _mm256_store_si256((__m256i*)b_array, b.value);
-        for (int i = 0; i < 4; i++) {
-            int64_t base = a_array[i];
-            int64_t exp = b_array[i];
-            int64_t res = 1;
-            // Handle negative exponents for int by setting to 0
-            if (exp < 0) {
-                result[i] = 0;
-                continue;
-            }
-            while (exp > 0) {
-                if (exp & 1) res *= base;
-                exp >>= 1;
-                if (exp > 0) base *= base; // Only multiply base if we'll use it again
-            }
-            result[i] = res;
-        }
-        return load<int64_t, 4>(result);
-    }
-
-    // Power implementation for uint64_t (4-wide)
-    inline Simd<uint64_t, 4> pow(Simd<uint64_t, 4> a, Simd<uint64_t, 4> b) {
-        alignas(32) uint64_t a_array[4], b_array[4], result[4];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        _mm256_store_si256((__m256i*)b_array, b.value);
-        for (int i = 0; i < 4; i++) {
-            uint64_t base = a_array[i];
-            uint64_t exp = b_array[i];
-            uint64_t res = 1;
-            while (exp > 0) {
-                if (exp & 1) res *= base;
-                exp >>= 1;
-                if (exp > 0) base *= base; // Only multiply base if we'll use it again
-            }
-            result[i] = res;
-        }
-        return load<uint64_t, 4>(result);
-    }
-
-    // Select implementation - conditional function based on mask
-    template <typename T>
-    inline Simd<T, 8> select(Simd<bool, 8> mask, Simd<T, 8> a, Simd<T, 8> b);
-
-    // Specialization for float 8-wide
-    template <>
-    inline Simd<float, 8> select(Simd<bool, 8> mask, Simd<float, 8> a, Simd<float, 8> b) {
-        return Simd<float, 8>(_mm256_blendv_ps(b.value, a.value, mask.value));
-    }
-
-    // Specialization for int 8-wide
-    template <>
-    inline Simd<int, 8> select(Simd<bool, 8> mask, Simd<int, 8> a, Simd<int, 8> b) {
-        return Simd<int, 8>(_mm256_castps_si256(
-            _mm256_blendv_ps(_mm256_castsi256_ps(b.value), _mm256_castsi256_ps(a.value), mask.value)
-        ));
-    }
-
-    // Specialization for uint32_t 8-wide
-    template <>
-    inline Simd<uint32_t, 8> select(Simd<bool, 8> mask, Simd<uint32_t, 8> a, Simd<uint32_t, 8> b) {
-        return Simd<uint32_t, 8>(_mm256_castps_si256(
-            _mm256_blendv_ps(_mm256_castsi256_ps(b.value), _mm256_castsi256_ps(a.value), mask.value)
-        ));
-    }
-
-    // Specialization for bool 8-wide
-    template <>
-    inline Simd<bool, 8> select(Simd<bool, 8> mask, Simd<bool, 8> a, Simd<bool, 8> b) {
-        return Simd<bool, 8>(_mm256_blendv_ps(b.value, a.value, mask.value));
-    }
-
-    // Select for 4-wide types
-    template <typename T>
-    inline Simd<T, 4> select(Simd<bool, 4> mask, Simd<T, 4> a, Simd<T, 4> b);
-
-    // Specialization for float 4-wide
-    template <>
-    inline Simd<float, 4> select(Simd<bool, 4> mask, Simd<float, 4> a, Simd<float, 4> b) {
-        return Simd<float, 4>(_mm_blendv_ps(b.value, a.value, mask.value));
-    }
-
-    // Specialization for int 4-wide
-    template <>
-    inline Simd<int, 4> select(Simd<bool, 4> mask, Simd<int, 4> a, Simd<int, 4> b) {
-        return Simd<int, 4>(_mm_castps_si128(
-            _mm_blendv_ps(_mm_castsi128_ps(b.value), _mm_castsi128_ps(a.value), mask.value)
-        ));
-    }
-
-    // Specialization for uint32_t 4-wide
-    template <>
-    inline Simd<uint32_t, 4> select(Simd<bool, 4> mask, Simd<uint32_t, 4> a, Simd<uint32_t, 4> b) {
-        return Simd<uint32_t, 4>(_mm_castps_si128(
-            _mm_blendv_ps(_mm_castsi128_ps(b.value), _mm_castsi128_ps(a.value), mask.value)
-        ));
-    }
-
-    // Specialization for double 4-wide
-    template <>
-    inline Simd<double, 4> select(Simd<bool, 4> mask, Simd<double, 4> a, Simd<double, 4> b) {
-        __m256d mask_pd = _mm256_castps_pd(_mm256_insertf128_ps(_mm256_castps128_ps256(mask.value), mask.value, 1));
-        return Simd<double, 4>(_mm256_blendv_pd(b.value, a.value, mask_pd));
-    }
-
-    // Specialization for int64_t 4-wide (no direct AVX blend for 64-bit integers)
-    template <>
-    inline Simd<int64_t, 4> select(Simd<bool, 4> mask, Simd<int64_t, 4> a, Simd<int64_t, 4> b) {
-        alignas(32) int64_t a_array[4], b_array[4], result[4];
-        alignas(16) float mask_array[4];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        _mm256_store_si256((__m256i*)b_array, b.value);
-        _mm_store_ps(mask_array, mask.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = (mask_array[i] != 0.0f) ? a_array[i] : b_array[i];
-        }
-        return load<int64_t, 4>(result);
-    }
-
-    // Specialization for uint64_t 4-wide
-    template <>
-    inline Simd<uint64_t, 4> select(Simd<bool, 4> mask, Simd<uint64_t, 4> a, Simd<uint64_t, 4> b) {
-        alignas(32) uint64_t a_array[4], b_array[4], result[4];
-        alignas(16) float mask_array[4];
-        _mm256_store_si256((__m256i*)a_array, a.value);
-        _mm256_store_si256((__m256i*)b_array, b.value);
-        _mm_store_ps(mask_array, mask.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = (mask_array[i] != 0.0f) ? a_array[i] : b_array[i];
-        }
-        return load<uint64_t, 4>(result);
-    }
-
-    // Specialization for bool 4-wide
-    template <>
-    inline Simd<bool, 4> select(Simd<bool, 4> mask, Simd<bool, 4> a, Simd<bool, 4> b) {
-        return Simd<bool, 4>(_mm_blendv_ps(b.value, a.value, mask.value));
-    }
-
-    // FMA implementation for AVX
-    inline Simd<float, 8> fma(Simd<float, 8> a, Simd<float, 8> b, Simd<float, 8> c) {
-        #ifdef __FMA__
-        return Simd<float, 8>(_mm256_fmadd_ps(a.value, b.value, c.value));
-        #else
-        return a * b + c;
-        #endif
-    }
-
-    inline Simd<float, 4> fma(Simd<float, 4> a, Simd<float, 4> b, Simd<float, 4> c) {
-        #ifdef __FMA__
-        return Simd<float, 4>(_mm_fmadd_ps(a.value, b.value, c.value));
-        #else
-        return a * b + c;
-        #endif
-    }
-
-    inline Simd<double, 4> fma(Simd<double, 4> a, Simd<double, 4> b, Simd<double, 4> c) {
-        #ifdef __FMA__
-        return Simd<double, 4>(_mm256_fmadd_pd(a.value, b.value, c.value));
-        #else
-        return a * b + c;
-        #endif
-    }
-
-    // Clamp function (restricting a value to a range)
-    template <typename T, int N>
-    inline Simd<T, N> clamp(Simd<T, N> v, Simd<T, N> min_val, Simd<T, N> max_val) {
-        return minimum(maximum(v, min_val), max_val);
-    }
-
-
-
-    // ====== REDUCTION OPERATIONS ======
-
-    // Sum reduction for float 8-wide
-    template <>
-    inline float sum<float, 8>(Simd<float, 8> x) {
-        __m256 sum1 = _mm256_hadd_ps(x.value, x.value);
-        __m256 sum2 = _mm256_hadd_ps(sum1, sum1);
-        __m128 lo = _mm256_castps256_ps128(sum2);
-        __m128 hi = _mm256_extractf128_ps(sum2, 1);
-        __m128 sum_ps = _mm_add_ps(lo, hi);
-        alignas(16) float result[4];
-        _mm_store_ps(result, sum_ps);
-        return result[0];
-    }
-
-    // Sum reduction for float 4-wide
-    template <>
-    inline float sum<float, 4>(Simd<float, 4> x) {
-        __m128 sum1 = _mm_hadd_ps(x.value, x.value);
-        __m128 sum2 = _mm_hadd_ps(sum1, sum1);
-        alignas(16) float result[4];
-        _mm_store_ps(result, sum2);
-        return result[0];
-    }
-
-    // Sum reduction for double 4-wide
-    template <>
-    inline double sum<double, 4>(Simd<double, 4> x) {
-        __m256d sum1 = _mm256_hadd_pd(x.value, x.value);
-        __m128d lo = _mm256_castpd256_pd128(sum1);
-        __m128d hi = _mm256_extractf128_pd(sum1, 1);
-        __m128d sum_pd = _mm_add_pd(lo, hi);
-        alignas(16) double result[2];
-        _mm_store_pd(result, sum_pd);
-        return result[0];
-    }
-
-    // Sum reduction for int 8-wide
-    template <>
-    inline int sum<int, 8>(Simd<int, 8> x) {
-        __m256i sum1 = _mm256_hadd_epi32(x.value, x.value);
-        __m256i sum2 = _mm256_hadd_epi32(sum1, sum1);
-        __m128i lo = _mm256_castsi256_si128(sum2);
-        __m128i hi = _mm256_extractf128_si256(sum2, 1);
-        __m128i sum_epi32 = _mm_add_epi32(lo, hi);
-        alignas(16) int result[4];
-        _mm_store_si128((__m128i*)result, sum_epi32);
-        return result[0];
-    }
-
-    // Max reduction for common types
-    template <>
-    inline float max<float, 8>(Simd<float, 8> x) {
-        __m128 hi = _mm256_extractf128_ps(x.value, 1);
-        __m128 lo = _mm256_castps256_ps128(x.value);
-        __m128 max1 = _mm_max_ps(lo, hi);
-        __m128 max2 = _mm_shuffle_ps(max1, max1, _MM_SHUFFLE(1, 0, 3, 2));
-        __m128 max3 = _mm_max_ps(max1, max2);
-        __m128 max4 = _mm_shuffle_ps(max3, max3, _MM_SHUFFLE(0, 1, 0, 1));
-        __m128 max5 = _mm_max_ps(max3, max4);
-        alignas(16) float result[4];
-        _mm_store_ps(result, max5);
-        return result[0];
-    }
-
-    template <>
-    inline int max<int, 8>(Simd<int, 8> x) {
-        __m128i hi = _mm256_extractf128_si256(x.value, 1);
-        __m128i lo = _mm256_castsi256_si128(x.value);
-        __m128i max1 = _mm_max_epi32(lo, hi);
-        __m128i max2 = _mm_shuffle_epi32(max1, _MM_SHUFFLE(1, 0, 3, 2));
-        __m128i max3 = _mm_max_epi32(max1, max2);
-        __m128i max4 = _mm_shuffle_epi32(max3, _MM_SHUFFLE(0, 1, 0, 1));
-        __m128i max5 = _mm_max_epi32(max3, max4);
-        alignas(16) int result[4];
-        _mm_store_si128((__m128i*)result, max5);
-        return result[0];
-    }
-
-    // Min reduction for common types
-    template <>
-    inline float min<float, 8>(Simd<float, 8> x) {
-        __m128 hi = _mm256_extractf128_ps(x.value, 1);
-        __m128 lo = _mm256_castps256_ps128(x.value);
-        __m128 min1 = _mm_min_ps(lo, hi);
-        __m128 min2 = _mm_shuffle_ps(min1, min1, _MM_SHUFFLE(1, 0, 3, 2));
-        __m128 min3 = _mm_min_ps(min1, min2);
-        __m128 min4 = _mm_shuffle_ps(min3, min3, _MM_SHUFFLE(0, 1, 0, 1));
-        __m128 min5 = _mm_min_ps(min3, min4);
-        alignas(16) float result[4];
-        _mm_store_ps(result, min5);
-        return result[0];
-    }
-
-    template <>
-    inline int min<int, 8>(Simd<int, 8> x) {
-        __m128i hi = _mm256_extractf128_si256(x.value, 1);
-        __m128i lo = _mm256_castsi256_si128(x.value);
-        __m128i min1 = _mm_min_epi32(lo, hi);
-        __m128i min2 = _mm_shuffle_epi32(min1, _MM_SHUFFLE(1, 0, 3, 2));
-        __m128i min3 = _mm_min_epi32(min1, min2);
-        __m128i min4 = _mm_shuffle_epi32(min3, _MM_SHUFFLE(0, 1, 0, 1));
-        __m128i min5 = _mm_min_epi32(min3, min4);
-        alignas(16) int result[4];
-        _mm_store_si128((__m128i*)result, min5);
-        return result[0];
-    }
-
-    // Add this specialization for max with bool 8-wide
-    template <>
-    inline bool max<bool, 8>(Simd<bool, 8> x) {
-        // For boolean values, max is true if any element is true
-        // This is equivalent to 'any' operation
-        return _mm256_movemask_ps(x.value) != 0;
-    }
-
-    // And you might need min as well
-    template <>
-    inline bool min<bool, 8>(Simd<bool, 8> x) {
-        // For boolean values, min is false if any element is false
-        // This is equivalent to 'all' operation
-        return _mm256_movemask_ps(x.value) == 0xFF;
-    }
-
-    // And you may need the 4-wide versions too:
-    template <>
-    inline bool max<bool, 4>(Simd<bool, 4> x) {
-        return _mm_movemask_ps(x.value) != 0;
-    }
-
-    template <>
-    inline bool min<bool, 4>(Simd<bool, 4> x) {
-        return _mm_movemask_ps(x.value) == 0xF;
-    }
-
-    // Specialization for min reduction with unsigned int (uint32_t) 8-wide
-    template <>
-    inline uint32_t min<uint32_t, 8>(Simd<uint32_t, 8> x) {
-        alignas(32) uint32_t values[8];
-        _mm256_store_si256((__m256i*)values, x.value);
-        uint32_t min_val = values[0];
-        for (int i = 1; i < 8; i++) {
-            if (values[i] < min_val) {
-                min_val = values[i];
-            }
-        }
-        return min_val;
-    }
-
-    // Specialization for max reduction with unsigned int (uint32_t) 8-wide
-    template <>
-    inline uint32_t max<uint32_t, 8>(Simd<uint32_t, 8> x) {
-        alignas(32) uint32_t values[8];
-        _mm256_store_si256((__m256i*)values, x.value);
-        uint32_t max_val = values[0];
-        for (int i = 1; i < 8; i++) {
-            if (values[i] > max_val) {
-                max_val = values[i];
-            }
-        }
-        return max_val;
-    }
-
-    // You might also need sum and prod
-    template <>
-    inline uint32_t sum<uint32_t, 8>(Simd<uint32_t, 8> x) {
-        alignas(32) uint32_t values[8];
-        _mm256_store_si256((__m256i*)values, x.value);
-        return values[0] + values[1] + values[2] + values[3] + 
-            values[4] + values[5] + values[6] + values[7];
-    }
-
-    template <>
-    inline uint32_t prod<uint32_t, 8>(Simd<uint32_t, 8> x) {
-        alignas(32) uint32_t values[8];
-        _mm256_store_si256((__m256i*)values, x.value);
-        return values[0] * values[1] * values[2] * values[3] * 
-            values[4] * values[5] * values[6] * values[7];
-    }
-
-    // 4-wide versions
-    template <>
-    inline uint32_t min<uint32_t, 4>(Simd<uint32_t, 4> x) {
-        alignas(16) uint32_t values[4];
-        _mm_store_si128((__m128i*)values, x.value);
-        uint32_t min_val = values[0];
-        for (int i = 1; i < 4; i++) {
-            if (values[i] < min_val) {
-                min_val = values[i];
-            }
-        }
-        return min_val;
-    }
-
-    template <>
-    inline uint32_t max<uint32_t, 4>(Simd<uint32_t, 4> x) {
-        alignas(16) uint32_t values[4];
-        _mm_store_si128((__m128i*)values, x.value);
-        uint32_t max_val = values[0];
-        for (int i = 1; i < 4; i++) {
-            if (values[i] > max_val) {
-                max_val = values[i];
-            }
-        }
-        return max_val;
-    }
-
-    // Boolean reductions
-    // Add concrete implementations for specific sizes
-    // For 'all' function
-    inline bool all(Simd<bool, 4> x) {
-        return _mm_movemask_ps(x.value) == 0xF;
-    }
-
-    inline bool all(Simd<bool, 8> x) {
-        return _mm256_movemask_ps(x.value) == 0xFF;
-    }
-
-    // For 'any' function
-    inline bool any(Simd<bool, 4> x) {
-        return _mm_movemask_ps(x.value) != 0;
-    }
-
-    inline bool any(Simd<bool, 8> x) {
-        return _mm256_movemask_ps(x.value) != 0;
-    }
-
-    // General templates for other sizes (using SFINAE to avoid conflict)
-    template <int N>
-    inline typename std::enable_if<(N > 1 && N != 4 && N != 8), bool>::type
-    all(Simd<bool, N> x) {
-        bool result = true;
-        for (int i = 0; i < N; ++i) {
-            result = result && x[i];
-        }
-        return result;
-    }
-
-    template <int N>
-    inline typename std::enable_if<(N > 1 && N != 4 && N != 8), bool>::type
-    any(Simd<bool, N> x) {
-        bool result = false;
-        for (int i = 0; i < N; ++i) {
-            result = result || x[i];
-        }
-        return result;
-    }
-
-    // Product reductions 
-    template <>
-    inline float prod<float, 8>(Simd<float, 8> x) {
-        alignas(32) float values[8];
-        _mm256_store_ps(values, x.value);
-        float product = 1.0f;
-        for (int i = 0; i < 8; i++) {
-            product *= values[i];
-        }
-        return product;
-    }
-
-    // template <>
-    // inline double prod<double, 4>(Simd<double, 4> x) {
-    //     alignas(32) double values[4];
-    //     _mm256_store_pd(values, x.value);
-    //     double product = 1.0;
-    //     for (int i = 0; i < 4; i++) {
-    //         product *= values[i];
-    //     }
-    //     return product;
-    // }
-
-    template <>
-    inline int prod<int, 8>(Simd<int, 8> x) {
-        alignas(32) int values[8];
-        _mm256_store_si256((__m256i*)values, x.value);
-        int product = 1;
-        for (int i = 0; i < 8; i++) {
-            product *= values[i];
-        }
-        return product;
-    }
-
-    // Add this helper function somewhere in your namespace
-    inline double erfinv_impl(double x) {
-        // Handle edge cases
-        if (x >= 1.0) return std::numeric_limits<double>::infinity();
-        if (x <= -1.0) return -std::numeric_limits<double>::infinity();
-        if (x == 0.0) return 0.0;
-
-        // Implementation with different approximations based on range
-        bool neg = (x < 0);
-        if (neg) x = -x;
-
-        double w, p;
-        
-        // Central region: |x| <= 0.7
-        if (x <= 0.7) {
-            w = x * x - 0.56249;
-            p = (((2.81022636e-08 * w + 3.43273939e-07) * w + -3.5233877e-06) * w +
-                -4.39150654e-06) * w + 0.00021858087;
-            p = (((1.00950558e-04 * w + 0.00134934322) * w + -0.00367342844) * w +
-                0.00573950773) * w + -0.0076224613;
-            p = (((1.75966091e-02 * w + -0.0200214257) * w + 0.0223223464) * w +
-                -0.0165562398) * w + p;
-            p = (((-0.0199463912 * w + -0.0128209635) * w + 0.0094049351) * w + 0.0736418409) * w + 0.888593956;
-            p = p * x;
-        }
-        // Tail region: 0.7 < |x| < 1.0
-        else {
-            w = std::sqrt(-std::log((1.0 - x) / 2.0));
-            p = ((-0.000200214257 * w + 0.000100950558) * w + 0.00134934322) * w + -0.00367342844;
-            p = (((0.00573950773 * w + -0.0076224613) * w + 0.0175966091) * w + -0.0199463912) * w + p;
-            p = (((-0.0128209635 * w + 0.0223223464) * w + -0.0165562398) * w + 0.0094049351) * w + p;
-            p = ((0.0736418409 * w + -0.0200214257) * w + 0.888593956) * w + p;
-        }
-
-        return neg ? -p : p;
-    }
-
-    // Then use this helper in your SIMD implementation
-    inline Simd<double, 4> erfinv(Simd<double, 4> x) {
-        alignas(32) double values[4], result[4];
-        _mm256_store_pd(values, x.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = erfinv_impl(values[i]);
-        }
-        return load<double, 4>(result);
-    }
-
-    // And similarly for the erf function
-    inline Simd<double, 4> erf(Simd<double, 4> x) {
-        alignas(32) double values[4], result[4];
-        _mm256_store_pd(values, x.value);
-        for (int i = 0; i < 4; i++) {
-            result[i] = std::erf(values[i]);
-        }
-        return load<double, 4>(result);
-    }
-
-    // Add this specialization for min with long (int64_t)
-    template <>
-    inline long min<long, 4>(Simd<long, 4> x) {
-        alignas(32) long values[4];
-        _mm256_store_si256((__m256i*)values, x.value);
-        long min_val = values[0];
-        for (int i = 1; i < 4; i++) {
-            if (values[i] < min_val) {
-                min_val = values[i];
-            }
-        }
-        return min_val;
-    }
-
-    // You'll likely need the max function too
-    template <>
-    inline long max<long, 4>(Simd<long, 4> x) {
-        alignas(32) long values[4];
-        _mm256_store_si256((__m256i*)values, x.value);
-        long max_val = values[0];
-        for (int i = 1; i < 4; i++) {
-            if (values[i] > max_val) {
-                max_val = values[i];
-            }
-        }
-        return max_val;
-    }
-
-    // And while you're at it, you might need the sum function too
-    template <>
-    inline long sum<long, 4>(Simd<long, 4> x) {
-        alignas(32) long values[4];
-        _mm256_store_si256((__m256i*)values, x.value);
-        return values[0] + values[1] + values[2] + values[3];
-    }
-
-    // And potentially prod
-    template <>
-    inline long prod<long, 4>(Simd<long, 4> x) {
-        alignas(32) long values[4];
-        _mm256_store_si256((__m256i*)values, x.value);
-        return values[0] * values[1] * values[2] * values[3];
-    }
-
-    // Specialization for max reduction with unsigned long (uint64_t) 4-wide
-    template <>
-    inline uint64_t max<uint64_t, 4>(Simd<uint64_t, 4> x) {
-        alignas(32) uint64_t values[4];
-        _mm256_store_si256((__m256i*)values, x.value);
-        uint64_t max_val = values[0];
-        for (int i = 1; i < 4; i++) {
-            if (values[i] > max_val) {
-                max_val = values[i];
-            }
-        }
-        return max_val;
-    }
-
-    // You'll probably need these other reduction operations for uint64_t too
-    template <>
-    inline uint64_t min<uint64_t, 4>(Simd<uint64_t, 4> x) {
-        alignas(32) uint64_t values[4];
-        _mm256_store_si256((__m256i*)values, x.value);
-        uint64_t min_val = values[0];
-        for (int i = 1; i < 4; i++) {
-            if (values[i] < min_val) {
-                min_val = values[i];
-            }
-        }
-        return min_val;
-    }
-
-    template <>
-    inline uint64_t sum<uint64_t, 4>(Simd<uint64_t, 4> x) {
-        alignas(32) uint64_t values[4];
-        _mm256_store_si256((__m256i*)values, x.value);
-        return values[0] + values[1] + values[2] + values[3];
-    }
-
-    template <>
-    inline uint64_t prod<uint64_t, 4>(Simd<uint64_t, 4> x) {
-        alignas(32) uint64_t values[4];
-        _mm256_store_si256((__m256i*)values, x.value);
-        return values[0] * values[1] * values[2] * values[3];
-    }
-
-    // Specialization for min reduction with double 4-wide
-    template <>
-    inline double min<double, 4>(Simd<double, 4> x) {
-        alignas(32) double values[4];
-        _mm256_store_pd(values, x.value);
-        double min_val = values[0];
-        for (int i = 1; i < 4; i++) {
-            if (values[i] < min_val) {
-                min_val = values[i];
-            }
-        }
-        return min_val;
-    }
-
-    // And you might need these other reduction operations for double too
-    template <>
-    inline double max<double, 4>(Simd<double, 4> x) {
-        alignas(32) double values[4];
-        _mm256_store_pd(values, x.value);
-        double max_val = values[0];
-        for (int i = 1; i < 4; i++) {
-            if (values[i] > max_val) {
-                max_val = values[i];
-            }
-        }
-        return max_val;
-    }
-
-    // template <>
-    // inline double sum<double, 4>(Simd<double, 4> x) {
-    //     alignas(32) double values[4];
-    //     _mm256_store_pd(values, x.value);
-    //     return values[0] + values[1] + values[2] + values[3];
-    // }
-
-    template <>
-    inline double prod<double, 4>(Simd<double, 4> x) {
-        alignas(32) double values[4];
-        _mm256_store_pd(values, x.value);
-        return values[0] * values[1] * values[2] * values[3];
-    }
+// Logical operations for double 4-wide
+inline Simd<bool, 4> operator&&(Simd<double, 4> a, Simd<double, 4> b) {
+    __m256d a_bool = _mm256_cmp_pd(a.value, _mm256_setzero_pd(), _CMP_NEQ_OQ);
+    __m256d b_bool = _mm256_cmp_pd(b.value, _mm256_setzero_pd(), _CMP_NEQ_OQ);
+    
+    // Convert to bool format
+    __m128 low = _mm_castpd_ps(_mm256_extractf128_pd(a_bool, 0));
+    __m128 high = _mm_castpd_ps(_mm256_extractf128_pd(a_bool, 1));
+    __m128 a_ps = _mm_shuffle_ps(low, high, _MM_SHUFFLE(2, 0, 2, 0));
+    
+    low = _mm_castpd_ps(_mm256_extractf128_pd(b_bool, 0));
+    high = _mm_castpd_ps(_mm256_extractf128_pd(b_bool, 1));
+    __m128 b_ps = _mm_shuffle_ps(low, high, _MM_SHUFFLE(2, 0, 2, 0));
+    
+    return Simd<bool, 4>(_mm_and_ps(a_ps, b_ps));
+}
+
+inline Simd<bool, 4> operator||(Simd<double, 4> a, Simd<double, 4> b) {
+    __m256d a_bool = _mm256_cmp_pd(a.value, _mm256_setzero_pd(), _CMP_NEQ_OQ);
+    __m256d b_bool = _mm256_cmp_pd(b.value, _mm256_setzero_pd(), _CMP_NEQ_OQ);
+    
+    // Convert to bool format
+    __m128 low = _mm_castpd_ps(_mm256_extractf128_pd(a_bool, 0));
+    __m128 high = _mm_castpd_ps(_mm256_extractf128_pd(a_bool, 1));
+    __m128 a_ps = _mm_shuffle_ps(low, high, _MM_SHUFFLE(2, 0, 2, 0));
+    
+    low = _mm_castpd_ps(_mm256_extractf128_pd(b_bool, 0));
+    high = _mm_castpd_ps(_mm256_extractf128_pd(b_bool, 1));
+    __m128 b_ps = _mm_shuffle_ps(low, high, _MM_SHUFFLE(2, 0, 2, 0));
+    
+    return Simd<bool, 4>(_mm_or_ps(a_ps, b_ps));
+}
+
+// Logical operations for int64_t/uint64_t 4-wide (scalar implementation due to missing SIMD ops)
+inline Simd<bool, 4> operator&&(Simd<int64_t, 4> a, Simd<int64_t, 4> b) {
+    alignas(32) int64_t a_array[4], b_array[4];
+    alignas(16) float result_array[4];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    _mm256_store_si256((__m256i*)b_array, b.value);
+    for (int i = 0; i < 4; i++) {
+        result_array[i] = (a_array[i] != 0 && b_array[i] != 0) ? -1.0f : 0.0f;
+    }
+    return Simd<bool, 4>(_mm_loadu_ps(result_array));
+}
+
+inline Simd<bool, 4> operator||(Simd<int64_t, 4> a, Simd<int64_t, 4> b) {
+    alignas(32) int64_t a_array[4], b_array[4];
+    alignas(16) float result_array[4];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    _mm256_store_si256((__m256i*)b_array, b.value);
+    for (int i = 0; i < 4; i++) {
+        result_array[i] = (a_array[i] != 0 || b_array[i] != 0) ? -1.0f : 0.0f;
+    }
+    return Simd<bool, 4>(_mm_loadu_ps(result_array));
+}
+
+inline Simd<bool, 4> operator&&(Simd<uint64_t, 4> a, Simd<uint64_t, 4> b) {
+    alignas(32) uint64_t a_array[4], b_array[4];
+    alignas(16) float result_array[4];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    _mm256_store_si256((__m256i*)b_array, b.value);
+    for (int i = 0; i < 4; i++) {
+        result_array[i] = (a_array[i] != 0 && b_array[i] != 0) ? -1.0f : 0.0f;
+    }
+    return Simd<bool, 4>(_mm_loadu_ps(result_array));
+}
+
+inline Simd<bool, 4> operator||(Simd<uint64_t, 4> a, Simd<uint64_t, 4> b) {
+    alignas(32) uint64_t a_array[4], b_array[4];
+    alignas(16) float result_array[4];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    _mm256_store_si256((__m256i*)b_array, b.value);
+    for (int i = 0; i < 4; i++) {
+        result_array[i] = (a_array[i] != 0 || b_array[i] != 0) ? -1.0f : 0.0f;
+    }
+    return Simd<bool, 4>(_mm_loadu_ps(result_array));
+}
+
+// Logical operations for bool types
+inline Simd<bool, 8> operator&&(Simd<bool, 8> a, Simd<bool, 8> b) {
+    return Simd<bool, 8>(_mm256_and_ps(a.value, b.value));
+}
+
+inline Simd<bool, 8> operator||(Simd<bool, 8> a, Simd<bool, 8> b) {
+    return Simd<bool, 8>(_mm256_or_ps(a.value, b.value));
+}
+
+inline Simd<bool, 8> operator!(Simd<bool, 8> a) {
+    return Simd<bool, 8>(_mm256_xor_ps(a.value, _mm256_castsi256_ps(_mm256_set1_epi32(0xFFFFFFFF))));
+}
+
+inline Simd<bool, 4> operator&&(Simd<bool, 4> a, Simd<bool, 4> b) {
+    return Simd<bool, 4>(_mm_and_ps(a.value, b.value));
+}
+
+inline Simd<bool, 4> operator||(Simd<bool, 4> a, Simd<bool, 4> b) {
+    return Simd<bool, 4>(_mm_or_ps(a.value, b.value));
+}
+
+inline Simd<bool, 4> operator!(Simd<bool, 4> a) {
+    return Simd<bool, 4>(_mm_xor_ps(a.value, _mm_castsi128_ps(_mm_set1_epi32(0xFFFFFFFF))));
+}
+
+// Logical NOT for int (8-wide)
+inline Simd<int, 8> operator!(Simd<int, 8> a) {
+    // Compare with zero to get a boolean result, then convert to int
+    auto is_zero = (a == Simd<int, 8>(0));
+    // Convert bool to int (true -> 1, false -> 0)
+    alignas(32) float bool_vals[8];
+    alignas(32) int result[8];
+    _mm256_store_ps(bool_vals, is_zero.value);
+    for (int i = 0; i < 8; i++) {
+        result[i] = (bool_vals[i] != 0.0f) ? 1 : 0;
+    }
+    return load<int, 8>(result);
+}
+
+// Logical NOT for int (4-wide)
+inline Simd<int, 4> operator!(Simd<int, 4> a) {
+    auto is_zero = (a == Simd<int, 4>(0));
+    alignas(16) float bool_vals[4];
+    alignas(16) int result[4];
+    _mm_store_ps(bool_vals, is_zero.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = (bool_vals[i] != 0.0f) ? 1 : 0;
+    }
+    return load<int, 4>(result);
+}
+
+// Logical NOT for uint32_t (8-wide)
+inline Simd<uint32_t, 8> operator!(Simd<uint32_t, 8> a) {
+    auto is_zero = (a == Simd<uint32_t, 8>(0));
+    alignas(32) float bool_vals[8];
+    alignas(32) uint32_t result[8];
+    _mm256_store_ps(bool_vals, is_zero.value);
+    for (int i = 0; i < 8; i++) {
+        result[i] = (bool_vals[i] != 0.0f) ? 1 : 0;
+    }
+    return load<uint32_t, 8>(result);
+}
+
+// Logical NOT for uint32_t (4-wide)
+inline Simd<uint32_t, 4> operator!(Simd<uint32_t, 4> a) {
+    auto is_zero = (a == Simd<uint32_t, 4>(0));
+    alignas(16) float bool_vals[4];
+    alignas(16) uint32_t result[4];
+    _mm_store_ps(bool_vals, is_zero.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = (bool_vals[i] != 0.0f) ? 1 : 0;
+    }
+    return load<uint32_t, 4>(result);
+}
+
+// Logical NOT for int64_t (4-wide)
+inline Simd<int64_t, 4> operator!(Simd<int64_t, 4> a) {
+    alignas(32) int64_t values[4], result[4];
+    _mm256_store_si256((__m256i*)values, a.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = (values[i] == 0) ? 1 : 0;
+    }
+    return load<int64_t, 4>(result);
+}
+
+// Logical NOT for uint64_t (4-wide)
+inline Simd<uint64_t, 4> operator!(Simd<uint64_t, 4> a) {
+    alignas(32) uint64_t values[4], result[4];
+    _mm256_store_si256((__m256i*)values, a.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = (values[i] == 0) ? 1 : 0;
+    }
+    return load<uint64_t, 4>(result);
+}
+
+// Logical NOT for double (4-wide)
+inline Simd<double, 4> operator!(Simd<double, 4> a) {
+    alignas(32) double values[4], result[4];
+    _mm256_store_pd(values, a.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = (values[i] == 0.0) ? 1.0 : 0.0;
+    }
+    return load<double, 4>(result);
+}
+
+// ====== MATH FUNCTIONS ======
+
+// Unary math functions for float 8-wide - some can use AVX instructions directly
+inline Simd<float, 8> sqrt(Simd<float, 8> a) {
+    return Simd<float, 8>(_mm256_sqrt_ps(a.value));
+}
+
+inline Simd<float, 8> abs(Simd<float, 8> a) {
+    // Clear the sign bit
+    __m256 sign_mask = _mm256_set1_ps(-0.0f);  // 0x80000000
+    return Simd<float, 8>(_mm256_andnot_ps(sign_mask, a.value));
+}
+
+inline Simd<float, 8> floor(Simd<float, 8> a) {
+    return Simd<float, 8>(_mm256_floor_ps(a.value));
+}
+
+inline Simd<float, 8> ceil(Simd<float, 8> a) {
+    return Simd<float, 8>(_mm256_ceil_ps(a.value));
+}
+
+inline Simd<float, 8> round(Simd<float, 8> a) {
+    return Simd<float, 8>(_mm256_round_ps(a.value, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
+}
+
+// Helper macro for scalar math functions without direct AVX implementation
+#define DEFINE_SCALAR_MATH_FUNC(FUNC, TYPE, SIZE) \
+inline Simd<TYPE, SIZE> FUNC(Simd<TYPE, SIZE> a) { \
+    alignas(32) TYPE a_array[SIZE], result[SIZE]; \
+    store(a_array, a); \
+    for (int i = 0; i < SIZE; i++) { \
+        result[i] = std::FUNC(a_array[i]); \
+    } \
+    return load<TYPE, SIZE>(result); \
+}
+
+// Common scalar math functions for float 8-wide
+DEFINE_SCALAR_MATH_FUNC(exp, float, 8)
+DEFINE_SCALAR_MATH_FUNC(log, float, 8)
+DEFINE_SCALAR_MATH_FUNC(log10, float, 8)
+DEFINE_SCALAR_MATH_FUNC(log2, float, 8)
+DEFINE_SCALAR_MATH_FUNC(log1p, float, 8)
+DEFINE_SCALAR_MATH_FUNC(sin, float, 8)
+DEFINE_SCALAR_MATH_FUNC(cos, float, 8)
+DEFINE_SCALAR_MATH_FUNC(tan, float, 8)
+DEFINE_SCALAR_MATH_FUNC(asin, float, 8)
+DEFINE_SCALAR_MATH_FUNC(acos, float, 8)
+DEFINE_SCALAR_MATH_FUNC(atan, float, 8)
+DEFINE_SCALAR_MATH_FUNC(sinh, float, 8)
+DEFINE_SCALAR_MATH_FUNC(cosh, float, 8)
+DEFINE_SCALAR_MATH_FUNC(tanh, float, 8)
+DEFINE_SCALAR_MATH_FUNC(expm1, float, 8)
+DEFINE_SCALAR_MATH_FUNC(asinh, float, 8)
+DEFINE_SCALAR_MATH_FUNC(acosh, float, 8)
+DEFINE_SCALAR_MATH_FUNC(atanh, float, 8)
+
+// Unary math functions for float 4-wide
+inline Simd<float, 4> sqrt(Simd<float, 4> a) {
+    return Simd<float, 4>(_mm_sqrt_ps(a.value));
+}
+
+inline Simd<float, 4> abs(Simd<float, 4> a) {
+    __m128 sign_mask = _mm_set1_ps(-0.0f);
+    return Simd<float, 4>(_mm_andnot_ps(sign_mask, a.value));
+}
+
+// Math functions for float 4-wide
+DEFINE_SCALAR_MATH_FUNC(floor, float, 4)
+DEFINE_SCALAR_MATH_FUNC(ceil, float, 4)
+DEFINE_SCALAR_MATH_FUNC(round, float, 4)
+DEFINE_SCALAR_MATH_FUNC(exp, float, 4)
+DEFINE_SCALAR_MATH_FUNC(log, float, 4)
+DEFINE_SCALAR_MATH_FUNC(log10, float, 4)
+DEFINE_SCALAR_MATH_FUNC(log2, float, 4)
+DEFINE_SCALAR_MATH_FUNC(log1p, float, 4)
+DEFINE_SCALAR_MATH_FUNC(sin, float, 4)
+DEFINE_SCALAR_MATH_FUNC(cos, float, 4)
+DEFINE_SCALAR_MATH_FUNC(tan, float, 4)
+DEFINE_SCALAR_MATH_FUNC(asin, float, 4)
+DEFINE_SCALAR_MATH_FUNC(acos, float, 4)
+DEFINE_SCALAR_MATH_FUNC(atan, float, 4)
+DEFINE_SCALAR_MATH_FUNC(sinh, float, 4)
+DEFINE_SCALAR_MATH_FUNC(cosh, float, 4)
+DEFINE_SCALAR_MATH_FUNC(tanh, float, 4)
+DEFINE_SCALAR_MATH_FUNC(expm1, float, 4)
+DEFINE_SCALAR_MATH_FUNC(asinh, float, 4)
+DEFINE_SCALAR_MATH_FUNC(acosh, float, 4)
+DEFINE_SCALAR_MATH_FUNC(atanh, float, 4)
+
+// Math functions for double 4-wide - some can use AVX instructions directly
+inline Simd<double, 4> sqrt(Simd<double, 4> a) {
+    return Simd<double, 4>(_mm256_sqrt_pd(a.value));
+}
+
+inline Simd<double, 4> abs(Simd<double, 4> a) {
+    __m256d sign_mask = _mm256_set1_pd(-0.0);
+    return Simd<double, 4>(_mm256_andnot_pd(sign_mask, a.value));
+}
+
+inline Simd<double, 4> floor(Simd<double, 4> a) {
+    return Simd<double, 4>(_mm256_floor_pd(a.value));
+}
+
+inline Simd<double, 4> ceil(Simd<double, 4> a) {
+    return Simd<double, 4>(_mm256_ceil_pd(a.value));
+}
+
+inline Simd<double, 4> round(Simd<double, 4> a) {
+    return Simd<double, 4>(_mm256_round_pd(a.value, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
+}
+
+// Common scalar math functions for double 4-wide
+DEFINE_SCALAR_MATH_FUNC(exp, double, 4)
+DEFINE_SCALAR_MATH_FUNC(log, double, 4)
+DEFINE_SCALAR_MATH_FUNC(log10, double, 4)
+DEFINE_SCALAR_MATH_FUNC(log2, double, 4)
+DEFINE_SCALAR_MATH_FUNC(log1p, double, 4)
+DEFINE_SCALAR_MATH_FUNC(sin, double, 4)
+DEFINE_SCALAR_MATH_FUNC(cos, double, 4)
+DEFINE_SCALAR_MATH_FUNC(tan, double, 4)
+DEFINE_SCALAR_MATH_FUNC(asin, double, 4)
+DEFINE_SCALAR_MATH_FUNC(acos, double, 4)
+DEFINE_SCALAR_MATH_FUNC(atan, double, 4)
+DEFINE_SCALAR_MATH_FUNC(sinh, double, 4)
+DEFINE_SCALAR_MATH_FUNC(cosh, double, 4)
+DEFINE_SCALAR_MATH_FUNC(tanh, double, 4)
+DEFINE_SCALAR_MATH_FUNC(expm1, double, 4)
+DEFINE_SCALAR_MATH_FUNC(asinh, double, 4)
+DEFINE_SCALAR_MATH_FUNC(acosh, double, 4)
+DEFINE_SCALAR_MATH_FUNC(atanh, double, 4)
+
+// Math functions for integer types
+inline Simd<int, 8> abs(Simd<int, 8> a) {
+    return Simd<int, 8>(_mm256_abs_epi32(a.value));
+}
+
+inline Simd<int, 4> abs(Simd<int, 4> a) {
+    return Simd<int, 4>(_mm_abs_epi32(a.value));
+}
+
+// Abs for uint32_t is a no-op (already positive)
+inline Simd<uint32_t, 8> abs(Simd<uint32_t, 8> a) {
+    return a;
+}
+
+inline Simd<uint32_t, 4> abs(Simd<uint32_t, 4> a) {
+    return a;
+}
+
+// Abs for int64_t and uint64_t
+inline Simd<int64_t, 4> abs(Simd<int64_t, 4> a) {
+    alignas(32) int64_t a_array[4], result[4];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = std::abs(a_array[i]);
+    }
+    return load<int64_t, 4>(result);
+}
+
+inline Simd<uint64_t, 4> abs(Simd<uint64_t, 4> a) {
+    return a; // No-op for unsigned
+}
+
+// isnan implementation
+inline Simd<bool, 8> isnan(Simd<float, 8> a) {
+    return Simd<bool, 8>(_mm256_cmp_ps(a.value, a.value, _CMP_UNORD_Q));
+}
+
+inline Simd<bool, 4> isnan(Simd<float, 4> a) {
+    return Simd<bool, 4>(_mm_cmpunord_ps(a.value, a.value));
+}
+
+inline Simd<bool, 4> isnan(Simd<double, 4> a) {
+    __m256d cmp = _mm256_cmp_pd(a.value, a.value, _CMP_UNORD_Q);
+    __m128 low = _mm_castpd_ps(_mm256_extractf128_pd(cmp, 0));
+    __m128 high = _mm_castpd_ps(_mm256_extractf128_pd(cmp, 1));
+    return Simd<bool, 4>(_mm_shuffle_ps(low, high, _MM_SHUFFLE(2, 0, 2, 0)));
+}
+
+// Binary math functions with two vector arguments
+inline Simd<float, 8> atan2(Simd<float, 8> y, Simd<float, 8> x) {
+    alignas(32) float y_array[8], x_array[8], result[8];
+    _mm256_store_ps(y_array, y.value);
+    _mm256_store_ps(x_array, x.value);
+    for (int i = 0; i < 8; i++) {
+        result[i] = std::atan2(y_array[i], x_array[i]);
+    }
+    return load<float, 8>(result);
+}
+
+inline Simd<double, 4> atan2(Simd<double, 4> y, Simd<double, 4> x) {
+    alignas(32) double y_array[4], x_array[4], result[4];
+    _mm256_store_pd(y_array, y.value);
+    _mm256_store_pd(x_array, x.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = std::atan2(y_array[i], x_array[i]);
+    }
+    return load<double, 4>(result);
+}
+
+inline Simd<float, 8> pow(Simd<float, 8> a, Simd<float, 8> b) {
+    alignas(32) float a_array[8], b_array[8], result[8];
+    _mm256_store_ps(a_array, a.value);
+    _mm256_store_ps(b_array, b.value);
+    for (int i = 0; i < 8; i++) {
+        result[i] = std::pow(a_array[i], b_array[i]);
+    }
+    return load<float, 8>(result);
+}
+
+inline Simd<double, 4> pow(Simd<double, 4> a, Simd<double, 4> b) {
+    alignas(32) double a_array[4], b_array[4], result[4];
+    _mm256_store_pd(a_array, a.value);
+    _mm256_store_pd(b_array, b.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = std::pow(a_array[i], b_array[i]);
+    }
+    return load<double, 4>(result);
+}
+
+// Integer pow implementations
+inline Simd<int, 8> pow(Simd<int, 8> a, Simd<int, 8> b) {
+    alignas(32) int a_array[8], b_array[8], result[8];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    _mm256_store_si256((__m256i*)b_array, b.value);
+    for (int i = 0; i < 8; i++) {
+        int base = a_array[i];
+        int exp = b_array[i];
+        int res = 1;
+        while (exp > 0) {
+            if (exp & 1) res *= base;
+            exp >>= 1;
+            base *= base;
+        }
+        result[i] = res;
+    }
+    return load<int, 8>(result);
+}
+
+// Reciprocal square root
+inline Simd<float, 8> rsqrt(Simd<float, 8> x) {
+    return Simd<float, 8>(_mm256_rsqrt_ps(x.value));
+}
+
+inline Simd<float, 4> rsqrt(Simd<float, 4> x) {
+    return Simd<float, 4>(_mm_rsqrt_ps(x.value));
+}
+
+inline Simd<double, 4> rsqrt(Simd<double, 4> x) {
+    // No direct AVX instruction for double rsqrt
+    return Simd<double, 4>(1.0) / sqrt(x);
+}
+
+// Reciprocal
+inline Simd<float, 8> recip(Simd<float, 8> x) {
+    return Simd<float, 8>(_mm256_rcp_ps(x.value));
+}
+
+inline Simd<float, 4> recip(Simd<float, 4> x) {
+    return Simd<float, 4>(_mm_rcp_ps(x.value));
+}
+
+inline Simd<double, 4> recip(Simd<double, 4> x) {
+    // No direct AVX instruction for double recip
+    return Simd<double, 4>(1.0) / x;
+}
+
+// Round to nearest integer
+inline Simd<float, 8> rint(Simd<float, 8> x) {
+    return round(x);  // Using your existing round implementation
+}
+
+inline Simd<float, 4> rint(Simd<float, 4> x) {
+    return round(x);  // Using your existing round implementation
+}
+
+inline Simd<double, 4> rint(Simd<double, 4> x) {
+    return round(x);  // Using your existing round implementation
+}
+
+// Remainder operation
+inline Simd<float, 8> remainder(Simd<float, 8> a, Simd<float, 8> b) {
+    alignas(32) float a_array[8], b_array[8], result[8];
+    _mm256_store_ps(a_array, a.value);
+    _mm256_store_ps(b_array, b.value);
+    for (int i = 0; i < 8; i++) {
+        result[i] = std::remainder(a_array[i], b_array[i]);
+    }
+    return load<float, 8>(result);
+}
+
+inline Simd<float, 4> remainder(Simd<float, 4> a, Simd<float, 4> b) {
+    alignas(16) float a_array[4], b_array[4], result[4];
+    _mm_store_ps(a_array, a.value);
+    _mm_store_ps(b_array, b.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = std::remainder(a_array[i], b_array[i]);
+    }
+    return load<float, 4>(result);
+}
+
+inline Simd<double, 4> remainder(Simd<double, 4> a, Simd<double, 4> b) {
+    alignas(32) double a_array[4], b_array[4], result[4];
+    _mm256_store_pd(a_array, a.value);
+    _mm256_store_pd(b_array, b.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = std::remainder(a_array[i], b_array[i]);
+    }
+    return load<double, 4>(result);
+}
+
+inline Simd<int, 8> remainder(Simd<int, 8> a, Simd<int, 8> b) {
+    alignas(32) int a_array[8], b_array[8], result[8];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    _mm256_store_si256((__m256i*)b_array, b.value);
+    for (int i = 0; i < 8; i++) {
+        // Integer remainder is modulo
+        result[i] = a_array[i] % b_array[i];
+    }
+    return load<int, 8>(result);
+}
+
+inline Simd<int, 4> remainder(Simd<int, 4> a, Simd<int, 4> b) {
+    alignas(16) int a_array[4], b_array[4], result[4];
+    _mm_store_si128((__m128i*)a_array, a.value);
+    _mm_store_si128((__m128i*)b_array, b.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = a_array[i] % b_array[i];
+    }
+    return load<int, 4>(result);
+}
+
+// Remainder implementation for uint32_t (8-wide)
+inline Simd<uint32_t, 8> remainder(Simd<uint32_t, 8> a, Simd<uint32_t, 8> b) {
+    alignas(32) uint32_t a_array[8], b_array[8], result[8];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    _mm256_store_si256((__m256i*)b_array, b.value);
+    for (int i = 0; i < 8; i++) {
+        // For unsigned integers, remainder is just modulo
+        result[i] = (b_array[i] != 0) ? a_array[i] % b_array[i] : 0;
+    }
+    return load<uint32_t, 8>(result);
+}
+
+// Remainder implementation for uint32_t (4-wide)
+inline Simd<uint32_t, 4> remainder(Simd<uint32_t, 4> a, Simd<uint32_t, 4> b) {
+    alignas(16) uint32_t a_array[4], b_array[4], result[4];
+    _mm_store_si128((__m128i*)a_array, a.value);
+    _mm_store_si128((__m128i*)b_array, b.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = (b_array[i] != 0) ? a_array[i] % b_array[i] : 0;
+    }
+    return load<uint32_t, 4>(result);
+}
+
+// Remainder implementation for int64_t (4-wide)
+inline Simd<int64_t, 4> remainder(Simd<int64_t, 4> a, Simd<int64_t, 4> b) {
+    alignas(32) int64_t a_array[4], b_array[4], result[4];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    _mm256_store_si256((__m256i*)b_array, b.value);
+    for (int i = 0; i < 4; i++) {
+        // Check for division by zero
+        result[i] = (b_array[i] != 0) ? a_array[i] % b_array[i] : 0;
+    }
+    return load<int64_t, 4>(result);
+}
+
+// Remainder implementation for uint64_t (4-wide)
+inline Simd<uint64_t, 4> remainder(Simd<uint64_t, 4> a, Simd<uint64_t, 4> b) {
+    alignas(32) uint64_t a_array[4], b_array[4], result[4];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    _mm256_store_si256((__m256i*)b_array, b.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = (b_array[i] != 0) ? a_array[i] % b_array[i] : 0;
+    }
+    return load<uint64_t, 4>(result);
+}
+
+// Remainder implementation for bool (8-wide)
+inline Simd<bool, 8> remainder(Simd<bool, 8> a, Simd<bool, 8> b) {
+    // For booleans, remainder doesn't make much sense, but we can define
+    // it as: a % b = a when b is true, 0 when b is false
+    return a & b;
+}
+
+// Remainder implementation for bool (4-wide)
+inline Simd<bool, 4> remainder(Simd<bool, 4> a, Simd<bool, 4> b) {
+    return a & b;
+}
+
+// Comparison operators for int64_t (4-wide)
+inline Simd<bool, 4> operator==(Simd<int64_t, 4> a, Simd<int64_t, 4> b) {
+    alignas(32) int64_t a_array[4], b_array[4];
+    alignas(16) float result[4];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    _mm256_store_si256((__m256i*)b_array, b.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = (a_array[i] == b_array[i]) ? -1.0f : 0.0f;
+    }
+    return Simd<bool, 4>(_mm_loadu_ps(result));
+}
+
+inline Simd<bool, 4> operator!=(Simd<int64_t, 4> a, Simd<int64_t, 4> b) {
+    alignas(32) int64_t a_array[4], b_array[4];
+    alignas(16) float result[4];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    _mm256_store_si256((__m256i*)b_array, b.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = (a_array[i] != b_array[i]) ? -1.0f : 0.0f;
+    }
+    return Simd<bool, 4>(_mm_loadu_ps(result));
+}
+
+inline Simd<bool, 4> operator<(Simd<int64_t, 4> a, Simd<int64_t, 4> b) {
+    alignas(32) int64_t a_array[4], b_array[4];
+    alignas(16) float result[4];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    _mm256_store_si256((__m256i*)b_array, b.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = (a_array[i] < b_array[i]) ? -1.0f : 0.0f;
+    }
+    return Simd<bool, 4>(_mm_loadu_ps(result));
+}
+
+inline Simd<bool, 4> operator<=(Simd<int64_t, 4> a, Simd<int64_t, 4> b) {
+    alignas(32) int64_t a_array[4], b_array[4];
+    alignas(16) float result[4];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    _mm256_store_si256((__m256i*)b_array, b.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = (a_array[i] <= b_array[i]) ? -1.0f : 0.0f;
+    }
+    return Simd<bool, 4>(_mm_loadu_ps(result));
+}
+
+inline Simd<bool, 4> operator>(Simd<int64_t, 4> a, Simd<int64_t, 4> b) {
+    alignas(32) int64_t a_array[4], b_array[4];
+    alignas(16) float result[4];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    _mm256_store_si256((__m256i*)b_array, b.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = (a_array[i] > b_array[i]) ? -1.0f : 0.0f;
+    }
+    return Simd<bool, 4>(_mm_loadu_ps(result));
+}
+
+inline Simd<bool, 4> operator>=(Simd<int64_t, 4> a, Simd<int64_t, 4> b) {
+    alignas(32) int64_t a_array[4], b_array[4];
+    alignas(16) float result[4];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    _mm256_store_si256((__m256i*)b_array, b.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = (a_array[i] >= b_array[i]) ? -1.0f : 0.0f;
+    }
+    return Simd<bool, 4>(_mm_loadu_ps(result));
+}
+
+// Comparison operators for uint64_t (4-wide)
+inline Simd<bool, 4> operator==(Simd<uint64_t, 4> a, Simd<uint64_t, 4> b) {
+    alignas(32) uint64_t a_array[4], b_array[4];
+    alignas(16) float result[4];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    _mm256_store_si256((__m256i*)b_array, b.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = (a_array[i] == b_array[i]) ? -1.0f : 0.0f;
+    }
+    return Simd<bool, 4>(_mm_loadu_ps(result));
+}
+
+inline Simd<bool, 4> operator!=(Simd<uint64_t, 4> a, Simd<uint64_t, 4> b) {
+    alignas(32) uint64_t a_array[4], b_array[4];
+    alignas(16) float result[4];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    _mm256_store_si256((__m256i*)b_array, b.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = (a_array[i] != b_array[i]) ? -1.0f : 0.0f;
+    }
+    return Simd<bool, 4>(_mm_loadu_ps(result));
+}
+
+inline Simd<bool, 4> operator<(Simd<uint64_t, 4> a, Simd<uint64_t, 4> b) {
+    alignas(32) uint64_t a_array[4], b_array[4];
+    alignas(16) float result[4];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    _mm256_store_si256((__m256i*)b_array, b.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = (a_array[i] < b_array[i]) ? -1.0f : 0.0f;
+    }
+    return Simd<bool, 4>(_mm_loadu_ps(result));
+}
+
+inline Simd<bool, 4> operator<=(Simd<uint64_t, 4> a, Simd<uint64_t, 4> b) {
+    alignas(32) uint64_t a_array[4], b_array[4];
+    alignas(16) float result[4];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    _mm256_store_si256((__m256i*)b_array, b.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = (a_array[i] <= b_array[i]) ? -1.0f : 0.0f;
+    }
+    return Simd<bool, 4>(_mm_loadu_ps(result));
+}
+
+inline Simd<bool, 4> operator>(Simd<uint64_t, 4> a, Simd<uint64_t, 4> b) {
+    alignas(32) uint64_t a_array[4], b_array[4];
+    alignas(16) float result[4];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    _mm256_store_si256((__m256i*)b_array, b.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = (a_array[i] > b_array[i]) ? -1.0f : 0.0f;
+    }
+    return Simd<bool, 4>(_mm_loadu_ps(result));
+}
+
+inline Simd<bool, 4> operator>=(Simd<uint64_t, 4> a, Simd<uint64_t, 4> b) {
+    alignas(32) uint64_t a_array[4], b_array[4];
+    alignas(16) float result[4];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    _mm256_store_si256((__m256i*)b_array, b.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = (a_array[i] >= b_array[i]) ? -1.0f : 0.0f;
+    }
+    return Simd<bool, 4>(_mm_loadu_ps(result));
+}
+
+// ====== Min/Max Functions ======
+
+// min/max for float 8-wide
+inline Simd<float, 8> minimum(Simd<float, 8> a, Simd<float, 8> b) {
+    return Simd<float, 8>(_mm256_min_ps(a.value, b.value));
+}
+
+inline Simd<float, 8> maximum(Simd<float, 8> a, Simd<float, 8> b) {
+    return Simd<float, 8>(_mm256_max_ps(a.value, b.value));
+}
+
+// min/max for float 4-wide
+inline Simd<float, 4> minimum(Simd<float, 4> a, Simd<float, 4> b) {
+    return Simd<float, 4>(_mm_min_ps(a.value, b.value));
+}
+
+inline Simd<float, 4> maximum(Simd<float, 4> a, Simd<float, 4> b) {
+    return Simd<float, 4>(_mm_max_ps(a.value, b.value));
+}
+
+// min/max for double 4-wide
+inline Simd<double, 4> minimum(Simd<double, 4> a, Simd<double, 4> b) {
+    return Simd<double, 4>(_mm256_min_pd(a.value, b.value));
+}
+
+inline Simd<double, 4> maximum(Simd<double, 4> a, Simd<double, 4> b) {
+    return Simd<double, 4>(_mm256_max_pd(a.value, b.value));
+}
+
+// min/max for int 8-wide
+inline Simd<int, 8> minimum(Simd<int, 8> a, Simd<int, 8> b) {
+    return Simd<int, 8>(_mm256_min_epi32(a.value, b.value));
+}
+
+inline Simd<int, 8> maximum(Simd<int, 8> a, Simd<int, 8> b) {
+    return Simd<int, 8>(_mm256_max_epi32(a.value, b.value));
+}
+
+// min/max for int 4-wide
+inline Simd<int, 4> minimum(Simd<int, 4> a, Simd<int, 4> b) {
+    return Simd<int, 4>(_mm_min_epi32(a.value, b.value));
+}
+
+inline Simd<int, 4> maximum(Simd<int, 4> a, Simd<int, 4> b) {
+    return Simd<int, 4>(_mm_max_epi32(a.value, b.value));
+}
+
+// min/max for uint32_t 8-wide
+inline Simd<uint32_t, 8> minimum(Simd<uint32_t, 8> a, Simd<uint32_t, 8> b) {
+    return Simd<uint32_t, 8>(_mm256_min_epu32(a.value, b.value));
+}
+
+inline Simd<uint32_t, 8> maximum(Simd<uint32_t, 8> a, Simd<uint32_t, 8> b) {
+    return Simd<uint32_t, 8>(_mm256_max_epu32(a.value, b.value));
+}
+
+// min/max for uint32_t 4-wide
+inline Simd<uint32_t, 4> minimum(Simd<uint32_t, 4> a, Simd<uint32_t, 4> b) {
+    return Simd<uint32_t, 4>(_mm_min_epu32(a.value, b.value));
+}
+
+inline Simd<uint32_t, 4> maximum(Simd<uint32_t, 4> a, Simd<uint32_t, 4> b) {
+    return Simd<uint32_t, 4>(_mm_max_epu32(a.value, b.value));
+}
+
+// min/max for bool
+inline Simd<bool, 8> maximum(Simd<bool, 8> a, Simd<bool, 8> b) {
+    // For bool, maximum is equivalent to OR
+    return Simd<bool, 8>(_mm256_or_ps(a.value, b.value));
+}
+
+inline Simd<bool, 4> maximum(Simd<bool, 4> a, Simd<bool, 4> b) {
+    return Simd<bool, 4>(_mm_or_ps(a.value, b.value));
+}
+
+inline Simd<bool, 8> minimum(Simd<bool, 8> a, Simd<bool, 8> b) {
+    // For bool, minimum is equivalent to AND
+    return Simd<bool, 8>(_mm256_and_ps(a.value, b.value));
+}
+
+inline Simd<bool, 4> minimum(Simd<bool, 4> a, Simd<bool, 4> b) {
+    return Simd<bool, 4>(_mm_and_ps(a.value, b.value));
+}
+
+// Maximum and minimum for int64_t (4-wide)
+inline Simd<int64_t, 4> maximum(Simd<int64_t, 4> a, Simd<int64_t, 4> b) {
+    alignas(32) int64_t a_array[4], b_array[4], result[4];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    _mm256_store_si256((__m256i*)b_array, b.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = std::max(a_array[i], b_array[i]);
+    }
+    return load<int64_t, 4>(result);
+}
+
+inline Simd<int64_t, 4> minimum(Simd<int64_t, 4> a, Simd<int64_t, 4> b) {
+    alignas(32) int64_t a_array[4], b_array[4], result[4];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    _mm256_store_si256((__m256i*)b_array, b.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = std::min(a_array[i], b_array[i]);
+    }
+    return load<int64_t, 4>(result);
+}
+
+// Maximum and minimum for uint64_t (4-wide)
+inline Simd<uint64_t, 4> maximum(Simd<uint64_t, 4> a, Simd<uint64_t, 4> b) {
+    alignas(32) uint64_t a_array[4], b_array[4], result[4];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    _mm256_store_si256((__m256i*)b_array, b.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = std::max(a_array[i], b_array[i]);
+    }
+    return load<uint64_t, 4>(result);
+}
+
+inline Simd<uint64_t, 4> minimum(Simd<uint64_t, 4> a, Simd<uint64_t, 4> b) {
+    alignas(32) uint64_t a_array[4], b_array[4], result[4];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    _mm256_store_si256((__m256i*)b_array, b.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = std::min(a_array[i], b_array[i]);
+    }
+    return load<uint64_t, 4>(result);
+}
+
+// ====== UTILITY FUNCTIONS ======
+
+// Add a special template specialization for unsigned types
+template <typename T, int N, typename = typename std::enable_if<std::is_unsigned<T>::value>::type>
+inline Simd<T, N> sign(Simd<T, N> x) {
+    // For unsigned types, sign is 0 if x is 0, otherwise 1
+    auto zero = Simd<T, N>{0};
+    auto one = Simd<T, N>{1};
+    return select(x == zero, zero, one);
+}
+
+// Special case for bool
+template <int N>
+inline Simd<bool, N> sign(Simd<bool, N> x) {
+    // For bool, sign is the same as the value
+    return x;
+}
+
+// Left shift (<<) for bool 4-wide
+inline Simd<bool, 4> operator<<(Simd<bool, 4> a, Simd<bool, 4> b) {
+    // Convert to integer first
+    Simd<int, 4> a_int(a);
+    Simd<int, 4> b_int(b);
+    // Perform the shift
+    Simd<int, 4> result = a_int << b_int;
+    // Convert back to bool (non-zero becomes true)
+    return Simd<bool, 4>(result != Simd<int, 4>(0));
+}
+
+// Right shift (>>) for bool 4-wide
+inline Simd<bool, 4> operator>>(Simd<bool, 4> a, Simd<bool, 4> b) {
+    Simd<int, 4> a_int(a);
+    Simd<int, 4> b_int(b);
+    Simd<int, 4> result = a_int >> b_int;
+    return Simd<bool, 4>(result != Simd<int, 4>(0));
+}
+
+// Left shift (<<) for bool 8-wide
+inline Simd<bool, 8> operator<<(Simd<bool, 8> a, Simd<bool, 8> b) {
+    Simd<int, 8> a_int(a);
+    Simd<int, 8> b_int(b);
+    Simd<int, 8> result = a_int << b_int;
+    return Simd<bool, 8>(result != Simd<int, 8>(0));
+}
+
+// Right shift (>>) for bool 8-wide
+inline Simd<bool, 8> operator>>(Simd<bool, 8> a, Simd<bool, 8> b) {
+    Simd<int, 8> a_int(a);
+    Simd<int, 8> b_int(b);
+    Simd<int, 8> result = a_int >> b_int;
+    return Simd<bool, 8>(result != Simd<int, 8>(0));
+}
+
+// Logical NOT for float (8-wide)
+inline Simd<bool, 8> operator!(Simd<float, 8> a) {
+    return Simd<bool, 8>(_mm256_cmp_ps(a.value, _mm256_setzero_ps(), _CMP_EQ_OQ));
+}
+
+// Logical NOT for float (4-wide)
+inline Simd<bool, 4> operator!(Simd<float, 4> a) {
+    return Simd<bool, 4>(_mm_cmpeq_ps(a.value, _mm_setzero_ps()));
+}
+
+// Add explicit specialization for bool
+// For pow with bool (explicitly for sizes 4 and 8 only)
+inline Simd<bool, 4> pow(Simd<bool, 4> a, Simd<bool, 4> b) {
+    // Implementation that uses a & b
+    return a & b;
+}
+
+inline Simd<bool, 8> pow(Simd<bool, 8> a, Simd<bool, 8> b) {
+    // Implementation that uses a & b
+    return a & b;
+}
+
+// For pow with uint32_t (explicitly for sizes 4 and 8 only)
+inline Simd<uint32_t, 4> pow(Simd<uint32_t, 4> a, Simd<uint32_t, 4> b) {
+    alignas(16) uint32_t a_array[4], b_array[4], result[4];
+    store(a_array, a);
+    store(b_array, b);
+    for (int i = 0; i < 4; i++) {
+        uint32_t base = a_array[i];
+        uint32_t exp = b_array[i];
+        uint32_t res = 1;
+        while (exp > 0) {
+            if (exp & 1) res *= base;
+            exp >>= 1;
+            base *= base;
+        }
+        result[i] = res;
+    }
+    return load<uint32_t, 4>(result);
+}
+
+inline Simd<uint32_t, 8> pow(Simd<uint32_t, 8> a, Simd<uint32_t, 8> b) {
+    // Same implementation but for 8-wide
+    alignas(32) uint32_t a_array[8], b_array[8], result[8];
+    store(a_array, a);
+    store(b_array, b);
+    for (int i = 0; i < 8; i++) {
+        uint32_t base = a_array[i];
+        uint32_t exp = b_array[i];
+        uint32_t res = 1;
+        while (exp > 0) {
+            if (exp & 1) res *= base;
+            exp >>= 1;
+            base *= base;
+        }
+        result[i] = res;
+    }
+    return load<uint32_t, 8>(result);
+}
+
+// Power implementation for int64_t (4-wide)
+inline Simd<int64_t, 4> pow(Simd<int64_t, 4> a, Simd<int64_t, 4> b) {
+    alignas(32) int64_t a_array[4], b_array[4], result[4];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    _mm256_store_si256((__m256i*)b_array, b.value);
+    for (int i = 0; i < 4; i++) {
+        int64_t base = a_array[i];
+        int64_t exp = b_array[i];
+        int64_t res = 1;
+        // Handle negative exponents for int by setting to 0
+        if (exp < 0) {
+            result[i] = 0;
+            continue;
+        }
+        while (exp > 0) {
+            if (exp & 1) res *= base;
+            exp >>= 1;
+            if (exp > 0) base *= base; // Only multiply base if we'll use it again
+        }
+        result[i] = res;
+    }
+    return load<int64_t, 4>(result);
+}
+
+// Power implementation for uint64_t (4-wide)
+inline Simd<uint64_t, 4> pow(Simd<uint64_t, 4> a, Simd<uint64_t, 4> b) {
+    alignas(32) uint64_t a_array[4], b_array[4], result[4];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    _mm256_store_si256((__m256i*)b_array, b.value);
+    for (int i = 0; i < 4; i++) {
+        uint64_t base = a_array[i];
+        uint64_t exp = b_array[i];
+        uint64_t res = 1;
+        while (exp > 0) {
+            if (exp & 1) res *= base;
+            exp >>= 1;
+            if (exp > 0) base *= base; // Only multiply base if we'll use it again
+        }
+        result[i] = res;
+    }
+    return load<uint64_t, 4>(result);
+}
+
+// Select implementation - conditional function based on mask
+template <typename T>
+inline Simd<T, 8> select(Simd<bool, 8> mask, Simd<T, 8> a, Simd<T, 8> b);
+
+// Specialization for float 8-wide
+template <>
+inline Simd<float, 8> select(Simd<bool, 8> mask, Simd<float, 8> a, Simd<float, 8> b) {
+    return Simd<float, 8>(_mm256_blendv_ps(b.value, a.value, mask.value));
+}
+
+// Specialization for int 8-wide
+template <>
+inline Simd<int, 8> select(Simd<bool, 8> mask, Simd<int, 8> a, Simd<int, 8> b) {
+    return Simd<int, 8>(_mm256_castps_si256(
+        _mm256_blendv_ps(_mm256_castsi256_ps(b.value), _mm256_castsi256_ps(a.value), mask.value)
+    ));
+}
+
+// Specialization for uint32_t 8-wide
+template <>
+inline Simd<uint32_t, 8> select(Simd<bool, 8> mask, Simd<uint32_t, 8> a, Simd<uint32_t, 8> b) {
+    return Simd<uint32_t, 8>(_mm256_castps_si256(
+        _mm256_blendv_ps(_mm256_castsi256_ps(b.value), _mm256_castsi256_ps(a.value), mask.value)
+    ));
+}
+
+// Specialization for bool 8-wide
+template <>
+inline Simd<bool, 8> select(Simd<bool, 8> mask, Simd<bool, 8> a, Simd<bool, 8> b) {
+    return Simd<bool, 8>(_mm256_blendv_ps(b.value, a.value, mask.value));
+}
+
+// Select for 4-wide types
+template <typename T>
+inline Simd<T, 4> select(Simd<bool, 4> mask, Simd<T, 4> a, Simd<T, 4> b);
+
+// Specialization for float 4-wide
+template <>
+inline Simd<float, 4> select(Simd<bool, 4> mask, Simd<float, 4> a, Simd<float, 4> b) {
+    return Simd<float, 4>(_mm_blendv_ps(b.value, a.value, mask.value));
+}
+
+// Specialization for int 4-wide
+template <>
+inline Simd<int, 4> select(Simd<bool, 4> mask, Simd<int, 4> a, Simd<int, 4> b) {
+    return Simd<int, 4>(_mm_castps_si128(
+        _mm_blendv_ps(_mm_castsi128_ps(b.value), _mm_castsi128_ps(a.value), mask.value)
+    ));
+}
+
+// Specialization for uint32_t 4-wide
+template <>
+inline Simd<uint32_t, 4> select(Simd<bool, 4> mask, Simd<uint32_t, 4> a, Simd<uint32_t, 4> b) {
+    return Simd<uint32_t, 4>(_mm_castps_si128(
+        _mm_blendv_ps(_mm_castsi128_ps(b.value), _mm_castsi128_ps(a.value), mask.value)
+    ));
+}
+
+// Specialization for double 4-wide
+template <>
+inline Simd<double, 4> select(Simd<bool, 4> mask, Simd<double, 4> a, Simd<double, 4> b) {
+    __m256d mask_pd = _mm256_castps_pd(_mm256_insertf128_ps(_mm256_castps128_ps256(mask.value), mask.value, 1));
+    return Simd<double, 4>(_mm256_blendv_pd(b.value, a.value, mask_pd));
+}
+
+// Specialization for int64_t 4-wide (no direct AVX blend for 64-bit integers)
+template <>
+inline Simd<int64_t, 4> select(Simd<bool, 4> mask, Simd<int64_t, 4> a, Simd<int64_t, 4> b) {
+    alignas(32) int64_t a_array[4], b_array[4], result[4];
+    alignas(16) float mask_array[4];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    _mm256_store_si256((__m256i*)b_array, b.value);
+    _mm_store_ps(mask_array, mask.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = (mask_array[i] != 0.0f) ? a_array[i] : b_array[i];
+    }
+    return load<int64_t, 4>(result);
+}
+
+// Specialization for uint64_t 4-wide
+template <>
+inline Simd<uint64_t, 4> select(Simd<bool, 4> mask, Simd<uint64_t, 4> a, Simd<uint64_t, 4> b) {
+    alignas(32) uint64_t a_array[4], b_array[4], result[4];
+    alignas(16) float mask_array[4];
+    _mm256_store_si256((__m256i*)a_array, a.value);
+    _mm256_store_si256((__m256i*)b_array, b.value);
+    _mm_store_ps(mask_array, mask.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = (mask_array[i] != 0.0f) ? a_array[i] : b_array[i];
+    }
+    return load<uint64_t, 4>(result);
+}
+
+// Specialization for bool 4-wide
+template <>
+inline Simd<bool, 4> select(Simd<bool, 4> mask, Simd<bool, 4> a, Simd<bool, 4> b) {
+    return Simd<bool, 4>(_mm_blendv_ps(b.value, a.value, mask.value));
+}
+
+// FMA implementation for AVX
+inline Simd<float, 8> fma(Simd<float, 8> a, Simd<float, 8> b, Simd<float, 8> c) {
+    #ifdef __FMA__
+    return Simd<float, 8>(_mm256_fmadd_ps(a.value, b.value, c.value));
+    #else
+    return a * b + c;
+    #endif
+}
+
+inline Simd<float, 4> fma(Simd<float, 4> a, Simd<float, 4> b, Simd<float, 4> c) {
+    #ifdef __FMA__
+    return Simd<float, 4>(_mm_fmadd_ps(a.value, b.value, c.value));
+    #else
+    return a * b + c;
+    #endif
+}
+
+inline Simd<double, 4> fma(Simd<double, 4> a, Simd<double, 4> b, Simd<double, 4> c) {
+    #ifdef __FMA__
+    return Simd<double, 4>(_mm256_fmadd_pd(a.value, b.value, c.value));
+    #else
+    return a * b + c;
+    #endif
+}
+
+// Clamp function (restricting a value to a range)
+template <typename T, int N>
+inline Simd<T, N> clamp(Simd<T, N> v, Simd<T, N> min_val, Simd<T, N> max_val) {
+    return minimum(maximum(v, min_val), max_val);
+}
+
+
+// ====== REDUCTION OPERATIONS ======
+
+// Sum reduction for float 8-wide
+template <>
+inline float sum<float, 8>(Simd<float, 8> x) {
+    __m256 sum1 = _mm256_hadd_ps(x.value, x.value);
+    __m256 sum2 = _mm256_hadd_ps(sum1, sum1);
+    __m128 lo = _mm256_castps256_ps128(sum2);
+    __m128 hi = _mm256_extractf128_ps(sum2, 1);
+    __m128 sum_ps = _mm_add_ps(lo, hi);
+    alignas(16) float result[4];
+    _mm_store_ps(result, sum_ps);
+    return result[0];
+}
+
+// Sum reduction for float 4-wide
+template <>
+inline float sum<float, 4>(Simd<float, 4> x) {
+    __m128 sum1 = _mm_hadd_ps(x.value, x.value);
+    __m128 sum2 = _mm_hadd_ps(sum1, sum1);
+    alignas(16) float result[4];
+    _mm_store_ps(result, sum2);
+    return result[0];
+}
+
+// Sum reduction for double 4-wide
+template <>
+inline double sum<double, 4>(Simd<double, 4> x) {
+    __m256d sum1 = _mm256_hadd_pd(x.value, x.value);
+    __m128d lo = _mm256_castpd256_pd128(sum1);
+    __m128d hi = _mm256_extractf128_pd(sum1, 1);
+    __m128d sum_pd = _mm_add_pd(lo, hi);
+    alignas(16) double result[2];
+    _mm_store_pd(result, sum_pd);
+    return result[0];
+}
+
+// is above faster? uses avx
+// template <>
+// inline double sum<double, 4>(Simd<double, 4> x) {
+//     alignas(32) double values[4];
+//     _mm256_store_pd(values, x.value);
+//     return values[0] + values[1] + values[2] + values[3];
+// }
+
+// Sum reduction for int 8-wide
+template <>
+inline int sum<int, 8>(Simd<int, 8> x) {
+    __m256i sum1 = _mm256_hadd_epi32(x.value, x.value);
+    __m256i sum2 = _mm256_hadd_epi32(sum1, sum1);
+    __m128i lo = _mm256_castsi256_si128(sum2);
+    __m128i hi = _mm256_extractf128_si256(sum2, 1);
+    __m128i sum_epi32 = _mm_add_epi32(lo, hi);
+    alignas(16) int result[4];
+    _mm_store_si128((__m128i*)result, sum_epi32);
+    return result[0];
+}
+
+// Max reduction for common types
+template <>
+inline float max<float, 8>(Simd<float, 8> x) {
+    __m128 hi = _mm256_extractf128_ps(x.value, 1);
+    __m128 lo = _mm256_castps256_ps128(x.value);
+    __m128 max1 = _mm_max_ps(lo, hi);
+    __m128 max2 = _mm_shuffle_ps(max1, max1, _MM_SHUFFLE(1, 0, 3, 2));
+    __m128 max3 = _mm_max_ps(max1, max2);
+    __m128 max4 = _mm_shuffle_ps(max3, max3, _MM_SHUFFLE(0, 1, 0, 1));
+    __m128 max5 = _mm_max_ps(max3, max4);
+    alignas(16) float result[4];
+    _mm_store_ps(result, max5);
+    return result[0];
+}
+
+template <>
+inline int max<int, 8>(Simd<int, 8> x) {
+    __m128i hi = _mm256_extractf128_si256(x.value, 1);
+    __m128i lo = _mm256_castsi256_si128(x.value);
+    __m128i max1 = _mm_max_epi32(lo, hi);
+    __m128i max2 = _mm_shuffle_epi32(max1, _MM_SHUFFLE(1, 0, 3, 2));
+    __m128i max3 = _mm_max_epi32(max1, max2);
+    __m128i max4 = _mm_shuffle_epi32(max3, _MM_SHUFFLE(0, 1, 0, 1));
+    __m128i max5 = _mm_max_epi32(max3, max4);
+    alignas(16) int result[4];
+    _mm_store_si128((__m128i*)result, max5);
+    return result[0];
+}
+
+// Min reduction for common types
+template <>
+inline float min<float, 8>(Simd<float, 8> x) {
+    __m128 hi = _mm256_extractf128_ps(x.value, 1);
+    __m128 lo = _mm256_castps256_ps128(x.value);
+    __m128 min1 = _mm_min_ps(lo, hi);
+    __m128 min2 = _mm_shuffle_ps(min1, min1, _MM_SHUFFLE(1, 0, 3, 2));
+    __m128 min3 = _mm_min_ps(min1, min2);
+    __m128 min4 = _mm_shuffle_ps(min3, min3, _MM_SHUFFLE(0, 1, 0, 1));
+    __m128 min5 = _mm_min_ps(min3, min4);
+    alignas(16) float result[4];
+    _mm_store_ps(result, min5);
+    return result[0];
+}
+
+template <>
+inline int min<int, 8>(Simd<int, 8> x) {
+    __m128i hi = _mm256_extractf128_si256(x.value, 1);
+    __m128i lo = _mm256_castsi256_si128(x.value);
+    __m128i min1 = _mm_min_epi32(lo, hi);
+    __m128i min2 = _mm_shuffle_epi32(min1, _MM_SHUFFLE(1, 0, 3, 2));
+    __m128i min3 = _mm_min_epi32(min1, min2);
+    __m128i min4 = _mm_shuffle_epi32(min3, _MM_SHUFFLE(0, 1, 0, 1));
+    __m128i min5 = _mm_min_epi32(min3, min4);
+    alignas(16) int result[4];
+    _mm_store_si128((__m128i*)result, min5);
+    return result[0];
+}
+
+// Add this specialization for max with bool 8-wide
+template <>
+inline bool max<bool, 8>(Simd<bool, 8> x) {
+    // For boolean values, max is true if any element is true
+    // This is equivalent to 'any' operation
+    return _mm256_movemask_ps(x.value) != 0;
+}
+
+// And you might need min as well
+template <>
+inline bool min<bool, 8>(Simd<bool, 8> x) {
+    // For boolean values, min is false if any element is false
+    // This is equivalent to 'all' operation
+    return _mm256_movemask_ps(x.value) == 0xFF;
+}
+
+// And you may need the 4-wide versions too:
+template <>
+inline bool max<bool, 4>(Simd<bool, 4> x) {
+    return _mm_movemask_ps(x.value) != 0;
+}
+
+template <>
+inline bool min<bool, 4>(Simd<bool, 4> x) {
+    return _mm_movemask_ps(x.value) == 0xF;
+}
+
+// Specialization for min reduction with unsigned int (uint32_t) 8-wide
+template <>
+inline uint32_t min<uint32_t, 8>(Simd<uint32_t, 8> x) {
+    alignas(32) uint32_t values[8];
+    _mm256_store_si256((__m256i*)values, x.value);
+    uint32_t min_val = values[0];
+    for (int i = 1; i < 8; i++) {
+        if (values[i] < min_val) {
+            min_val = values[i];
+        }
+    }
+    return min_val;
+}
+
+// Specialization for max reduction with unsigned int (uint32_t) 8-wide
+template <>
+inline uint32_t max<uint32_t, 8>(Simd<uint32_t, 8> x) {
+    alignas(32) uint32_t values[8];
+    _mm256_store_si256((__m256i*)values, x.value);
+    uint32_t max_val = values[0];
+    for (int i = 1; i < 8; i++) {
+        if (values[i] > max_val) {
+            max_val = values[i];
+        }
+    }
+    return max_val;
+}
+
+// You might also need sum and prod
+template <>
+inline uint32_t sum<uint32_t, 8>(Simd<uint32_t, 8> x) {
+    alignas(32) uint32_t values[8];
+    _mm256_store_si256((__m256i*)values, x.value);
+    return values[0] + values[1] + values[2] + values[3] + 
+        values[4] + values[5] + values[6] + values[7];
+}
+
+template <>
+inline uint32_t prod<uint32_t, 8>(Simd<uint32_t, 8> x) {
+    alignas(32) uint32_t values[8];
+    _mm256_store_si256((__m256i*)values, x.value);
+    return values[0] * values[1] * values[2] * values[3] * 
+        values[4] * values[5] * values[6] * values[7];
+}
+
+// 4-wide versions
+template <>
+inline uint32_t min<uint32_t, 4>(Simd<uint32_t, 4> x) {
+    alignas(16) uint32_t values[4];
+    _mm_store_si128((__m128i*)values, x.value);
+    uint32_t min_val = values[0];
+    for (int i = 1; i < 4; i++) {
+        if (values[i] < min_val) {
+            min_val = values[i];
+        }
+    }
+    return min_val;
+}
+
+template <>
+inline uint32_t max<uint32_t, 4>(Simd<uint32_t, 4> x) {
+    alignas(16) uint32_t values[4];
+    _mm_store_si128((__m128i*)values, x.value);
+    uint32_t max_val = values[0];
+    for (int i = 1; i < 4; i++) {
+        if (values[i] > max_val) {
+            max_val = values[i];
+        }
+    }
+    return max_val;
+}
+
+// Boolean reductions
+// Add concrete implementations for specific sizes
+// For 'all' function
+inline bool all(Simd<bool, 4> x) {
+    return _mm_movemask_ps(x.value) == 0xF;
+}
+
+inline bool all(Simd<bool, 8> x) {
+    return _mm256_movemask_ps(x.value) == 0xFF;
+}
+
+// For 'any' function
+inline bool any(Simd<bool, 4> x) {
+    return _mm_movemask_ps(x.value) != 0;
+}
+
+inline bool any(Simd<bool, 8> x) {
+    return _mm256_movemask_ps(x.value) != 0;
+}
+
+// General templates for other sizes (using SFINAE to avoid conflict)
+template <int N>
+inline typename std::enable_if<(N > 1 && N != 4 && N != 8), bool>::type
+all(Simd<bool, N> x) {
+    bool result = true;
+    for (int i = 0; i < N; ++i) {
+        result = result && x[i];
+    }
+    return result;
+}
+
+template <int N>
+inline typename std::enable_if<(N > 1 && N != 4 && N != 8), bool>::type
+any(Simd<bool, N> x) {
+    bool result = false;
+    for (int i = 0; i < N; ++i) {
+        result = result || x[i];
+    }
+    return result;
+}
+
+// Product reductions 
+template <>
+inline float prod<float, 8>(Simd<float, 8> x) {
+    alignas(32) float values[8];
+    _mm256_store_ps(values, x.value);
+    float product = 1.0f;
+    for (int i = 0; i < 8; i++) {
+        product *= values[i];
+    }
+    return product;
+}
+
+// template <>
+// inline double prod<double, 4>(Simd<double, 4> x) {
+//     alignas(32) double values[4];
+//     _mm256_store_pd(values, x.value);
+//     double product = 1.0;
+//     for (int i = 0; i < 4; i++) {
+//         product *= values[i];
+//     }
+//     return product;
+// }
+
+// what's faster?
+template <>
+inline double prod<double, 4>(Simd<double, 4> x) {
+    alignas(32) double values[4];
+    _mm256_store_pd(values, x.value);
+    return values[0] * values[1] * values[2] * values[3];
+}
+
+template <>
+inline int prod<int, 8>(Simd<int, 8> x) {
+    alignas(32) int values[8];
+    _mm256_store_si256((__m256i*)values, x.value);
+    int product = 1;
+    for (int i = 0; i < 8; i++) {
+        product *= values[i];
+    }
+    return product;
+}
+
+// helper function for erfinv approximation
+inline double erfinv_impl(double x) {
+    // Handle edge cases
+    if (x >= 1.0) return std::numeric_limits<double>::infinity();
+    if (x <= -1.0) return -std::numeric_limits<double>::infinity();
+    if (x == 0.0) return 0.0;
+
+    // Implementation with different approximations based on range
+    bool neg = (x < 0);
+    if (neg) x = -x;
+
+    double w, p;
+    
+    // Central region: |x| <= 0.7
+    if (x <= 0.7) {
+        w = x * x - 0.56249;
+        p = (((2.81022636e-08 * w + 3.43273939e-07) * w + -3.5233877e-06) * w +
+            -4.39150654e-06) * w + 0.00021858087;
+        p = (((1.00950558e-04 * w + 0.00134934322) * w + -0.00367342844) * w +
+            0.00573950773) * w + -0.0076224613;
+        p = (((1.75966091e-02 * w + -0.0200214257) * w + 0.0223223464) * w +
+            -0.0165562398) * w + p;
+        p = (((-0.0199463912 * w + -0.0128209635) * w + 0.0094049351) * w + 0.0736418409) * w + 0.888593956;
+        p = p * x;
+    }
+    // Tail region: 0.7 < |x| < 1.0
+    else {
+        w = std::sqrt(-std::log((1.0 - x) / 2.0));
+        p = ((-0.000200214257 * w + 0.000100950558) * w + 0.00134934322) * w + -0.00367342844;
+        p = (((0.00573950773 * w + -0.0076224613) * w + 0.0175966091) * w + -0.0199463912) * w + p;
+        p = (((-0.0128209635 * w + 0.0223223464) * w + -0.0165562398) * w + 0.0094049351) * w + p;
+        p = ((0.0736418409 * w + -0.0200214257) * w + 0.888593956) * w + p;
+    }
+
+    return neg ? -p : p;
+}
+
+inline Simd<double, 4> erfinv(Simd<double, 4> x) {
+    alignas(32) double values[4], result[4];
+    _mm256_store_pd(values, x.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = erfinv_impl(values[i]);
+    }
+    return load<double, 4>(result);
+}
+
+inline Simd<double, 4> erf(Simd<double, 4> x) {
+    alignas(32) double values[4], result[4];
+    _mm256_store_pd(values, x.value);
+    for (int i = 0; i < 4; i++) {
+        result[i] = std::erf(values[i]);
+    }
+    return load<double, 4>(result);
+}
+
+template <>
+inline long min<long, 4>(Simd<long, 4> x) {
+    alignas(32) long values[4];
+    _mm256_store_si256((__m256i*)values, x.value);
+    long min_val = values[0];
+    for (int i = 1; i < 4; i++) {
+        if (values[i] < min_val) {
+            min_val = values[i];
+        }
+    }
+    return min_val;
+}
+
+template <>
+inline long max<long, 4>(Simd<long, 4> x) {
+    alignas(32) long values[4];
+    _mm256_store_si256((__m256i*)values, x.value);
+    long max_val = values[0];
+    for (int i = 1; i < 4; i++) {
+        if (values[i] > max_val) {
+            max_val = values[i];
+        }
+    }
+    return max_val;
+}
+
+template <>
+inline long sum<long, 4>(Simd<long, 4> x) {
+    alignas(32) long values[4];
+    _mm256_store_si256((__m256i*)values, x.value);
+    return values[0] + values[1] + values[2] + values[3];
+}
+
+template <>
+inline long prod<long, 4>(Simd<long, 4> x) {
+    alignas(32) long values[4];
+    _mm256_store_si256((__m256i*)values, x.value);
+    return values[0] * values[1] * values[2] * values[3];
+}
+
+// Specialization for max reduction with unsigned long (uint64_t) 4-wide
+template <>
+inline uint64_t max<uint64_t, 4>(Simd<uint64_t, 4> x) {
+    alignas(32) uint64_t values[4];
+    _mm256_store_si256((__m256i*)values, x.value);
+    uint64_t max_val = values[0];
+    for (int i = 1; i < 4; i++) {
+        if (values[i] > max_val) {
+            max_val = values[i];
+        }
+    }
+    return max_val;
+}
+
+template <>
+inline uint64_t min<uint64_t, 4>(Simd<uint64_t, 4> x) {
+    alignas(32) uint64_t values[4];
+    _mm256_store_si256((__m256i*)values, x.value);
+    uint64_t min_val = values[0];
+    for (int i = 1; i < 4; i++) {
+        if (values[i] < min_val) {
+            min_val = values[i];
+        }
+    }
+    return min_val;
+}
+
+template <>
+inline uint64_t sum<uint64_t, 4>(Simd<uint64_t, 4> x) {
+    alignas(32) uint64_t values[4];
+    _mm256_store_si256((__m256i*)values, x.value);
+    return values[0] + values[1] + values[2] + values[3];
+}
+
+template <>
+inline uint64_t prod<uint64_t, 4>(Simd<uint64_t, 4> x) {
+    alignas(32) uint64_t values[4];
+    _mm256_store_si256((__m256i*)values, x.value);
+    return values[0] * values[1] * values[2] * values[3];
+}
+
+// Specialization for min reduction with double 4-wide
+template <>
+inline double min<double, 4>(Simd<double, 4> x) {
+    alignas(32) double values[4];
+    _mm256_store_pd(values, x.value);
+    double min_val = values[0];
+    for (int i = 1; i < 4; i++) {
+        if (values[i] < min_val) {
+            min_val = values[i];
+        }
+    }
+    return min_val;
+}
+
+template <>
+inline double max<double, 4>(Simd<double, 4> x) {
+    alignas(32) double values[4];
+    _mm256_store_pd(values, x.value);
+    double max_val = values[0];
+    for (int i = 1; i < 4; i++) {
+        if (values[i] > max_val) {
+            max_val = values[i];
+        }
+    }
+    return max_val;
+}
 
 } // namespace mlx::core::simd
