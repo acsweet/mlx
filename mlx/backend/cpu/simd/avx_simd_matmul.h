@@ -6,7 +6,6 @@
 
 namespace mlx::core::simd {
 
-#ifdef HAVE_AVX
 // AVX optimized matrix multiplication helper functions
 template <>
 constexpr int max_size<float> = 8;
@@ -60,5 +59,4 @@ inline __m256 avx_scale_add_floats(__m256 x, float alpha, __m256 y, float beta) 
     return _mm256_add_ps(scaled_x, scaled_y);
 #endif
 }
-#endif // HAVE_AVX
 } // namespace mlx::core::simd
