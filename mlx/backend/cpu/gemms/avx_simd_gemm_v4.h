@@ -16,7 +16,7 @@ inline int ceildiv(int a, int b) {
     return (a + b - 1) / b;
 }
 
-// Packing Functions
+// --- Packing Functions ---
 template <typename T, typename AccT, int MC, int KC>
 static void pack_A_block(
     const T* A, AccT* A_packed, int M, int K, int M_offset, int K_offset,
@@ -148,7 +148,7 @@ static void compute_fma_microkernel(
     }
 }
 
-// Scalar Kernel for Edges/Partial Tiles
+// --- Scalar Kernel for Edges/Partial Tiles ---
 template <typename T, typename AccT>
 static void compute_block_scalar_partial(
     const AccT* A_panel, const AccT* B_panel, T* C, int ldc,
@@ -172,7 +172,9 @@ static void compute_block_scalar_partial(
     }
 }
 
-// single threaded gemm
+/**
+ * Optimized single-threaded matrix multiplication using AVX/FMA
+ */
 template <typename T, typename AccT>
 void simd_gemm_optimized(
     const T* a, const T* b, T* c,
@@ -266,6 +268,9 @@ void simd_gemm_optimized(
     }
 }
 
+/**
+ * Public interface for SIMD GEMM
+ */
 template <typename T, typename AccT = float>
 void simd_gemm(
     const T* a,

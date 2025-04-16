@@ -2,7 +2,7 @@ import mlx.core as mx
 import time
 import pandas as pd
 
-def benchmark(dtype, sizes, warumup=25, bench_runs=100):
+def benchmark(dtype, sizes, warumup=25, bench_runs=50):
     df_bench = pd.DataFrame()
     for size in sizes:
         a = mx.random.normal((size, size), dtype=dtype)
@@ -27,7 +27,7 @@ def benchmark(dtype, sizes, warumup=25, bench_runs=100):
     return df_bench
 
 sizes = [2**i for i in range(4, 11)]
-dtypes = [mx.float16, mx.float32]
+dtypes = [mx.float16, mx.bfloat16, mx.float32]
 
 df_result = pd.DataFrame()
 for dtype in dtypes:

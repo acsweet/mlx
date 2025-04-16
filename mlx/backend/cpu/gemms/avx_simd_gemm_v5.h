@@ -16,7 +16,7 @@ inline int ceildiv(int a, int b) {
     return (a + b - 1) / b;
 }
 
-// Packing Functions
+// --- Packing Functions ---
 template <typename T, typename AccT, int MC, int KC>
 static void pack_A_block(
     const T* A, AccT* A_packed, int M, int K, int M_offset, int K_offset,
@@ -27,9 +27,25 @@ static void pack_A_block(
         for (int i = 0; i < m_block; ++i) {
             const T* a_src_row = A + (M_offset + i) * K + K_offset;
             AccT* a_dst_row = A_packed + i * KC;
-            for (int k = 0; k < k_block; ++k) {
-                a_dst_row[k] = static_cast<AccT>(a_src_row[k]);
+            
+            // Prefetch the next row
+            if (i + 1 < m_block) {
+                simd::prefetch(A + (M_offset + i + 1) * K + K_offset);
             }
+            
+            for (int k = 0; k < k_block; k += 16) {
+                // Prefetch ahead within this row
+                if (k + 16 < k_block) {
+                    simd::prefetch(&a_src_row[k + 16]);
+                }
+                
+                // Process current chunk
+                int k_end = std::min(k + 16, k_block);
+                for (int kk = k; kk < k_end; ++kk) {
+                    a_dst_row[kk] = static_cast<AccT>(a_src_row[kk]);
+                }
+            }
+            
             for (int k = k_block; k < KC; ++k) {
                 a_dst_row[k] = AccT(0);
             }
@@ -65,9 +81,25 @@ static void pack_B_block(
         for (int k = 0; k < k_block; ++k) {
             const T* b_src_row = B + (K_offset + k) * N + N_offset;
             AccT* b_dst_row = B_packed + k * NC;
-            for (int j = 0; j < n_block; ++j) {
-                b_dst_row[j] = static_cast<AccT>(b_src_row[j]);
+            
+            // Prefetch the next row
+            if (k + 1 < k_block) {
+                simd::prefetch(B + (K_offset + k + 1) * N + N_offset);
             }
+            
+            for (int j = 0; j < n_block; j += 16) {
+                // Prefetch ahead within this row
+                if (j + 16 < n_block) {
+                    simd::prefetch(&b_src_row[j + 16]);
+                }
+                
+                // Process current chunk
+                int j_end = std::min(j + 16, n_block);
+                for (int jj = j; jj < j_end; ++jj) {
+                    b_dst_row[jj] = static_cast<AccT>(b_src_row[jj]);
+                }
+            }
+            
             for(int j = n_block; j < NC; ++j) {
                 b_dst_row[j] = AccT(0);
             }
@@ -110,6 +142,7 @@ static void compute_fma_microkernel(
 
     constexpr int simd_width = simd::max_size<AccT>;
     constexpr int num_b_vectors = NR / simd_width;
+    constexpr int PREFETCH_DISTANCE = 4; // How far ahead to prefetch
 
     using Vec = simd::Simd<AccT, simd_width>;
 
@@ -126,6 +159,19 @@ static void compute_fma_microkernel(
 
     // Main computation loop
     for (int k = 0; k < kc; ++k) {
+        // Prefetch next iteration's data
+        if (k + PREFETCH_DISTANCE < kc) {
+            // Prefetch next A panel elements
+            for (int i = 0; i < MR; ++i) {
+                simd::prefetch(A_panel + i * kc + k + PREFETCH_DISTANCE);
+            }
+            
+            // Prefetch next B panel elements
+            for (int bj = 0; bj < num_b_vectors; ++bj) {
+                simd::prefetch(B_panel + (k + PREFETCH_DISTANCE) * nc_packed + bj * simd_width);
+            }
+        }
+        
         Vec b_k[num_b_vectors];
         for(int bj = 0; bj < num_b_vectors; ++bj) {
             b_k[bj] = simd::load<AccT, simd_width>(B_panel + k * nc_packed + bj * simd_width);
@@ -148,7 +194,7 @@ static void compute_fma_microkernel(
     }
 }
 
-// Scalar Kernel for Edges/Partial Tiles
+// --- Scalar Kernel for Edges/Partial Tiles ---
 template <typename T, typename AccT>
 static void compute_block_scalar_partial(
     const AccT* A_panel, const AccT* B_panel, T* C, int ldc,
@@ -172,7 +218,9 @@ static void compute_block_scalar_partial(
     }
 }
 
-// single threaded gemm
+/**
+ * Optimized single-threaded matrix multiplication using AVX/FMA
+ */
 template <typename T, typename AccT>
 void simd_gemm_optimized(
     const T* a, const T* b, T* c,
@@ -203,6 +251,14 @@ void simd_gemm_optimized(
 
         for (int k = 0; k < K; k += KC) {
             int k_block = std::min(KC, K - k);
+            
+            // Prefetch the first elements of the next block of B
+            if (k + KC < K) {
+                const T* next_b_block = b_trans ? 
+                    (b + j * K + (k + KC)) : 
+                    (b + (k + KC) * N + j);
+                simd::prefetch(next_b_block);
+            }
 
             // Pack B Panel (KC x NC)
             pack_B_block<T, AccT, KC, NC>(
@@ -214,6 +270,19 @@ void simd_gemm_optimized(
 
             for (int i = 0; i < M; i += MC) {
                 int m_block = std::min(MC, M - i);
+                
+                // Prefetch the first elements of the next block of A
+                if (i + MC < M) {
+                    const T* next_a_block = a_trans ? 
+                        (a + k * M + (i + MC)) : 
+                        (a + (i + MC) * K + k);
+                    simd::prefetch(next_a_block);
+                }
+                
+                // Prefetch a few elements of C for the next iteration
+                if (i + MC < M) {
+                    simd::prefetch(c + (i + MC) * N + j);
+                }
 
                 // Pack A Panel (MC x KC)
                 pack_A_block<T, AccT, MC, KC>(
@@ -266,6 +335,9 @@ void simd_gemm_optimized(
     }
 }
 
+/**
+ * Public interface for SIMD GEMM
+ */
 template <typename T, typename AccT = float>
 void simd_gemm(
     const T* a,

@@ -137,6 +137,17 @@ inline void store_convert_from_float(T* dst, Simd<float, 8> src) {
     }
 }
 
+// --- Prefetching ---
+template <int locality = 3, bool read_only = true>
+inline void prefetch(const void* ptr) {
+#ifdef __GNUC__
+    __builtin_prefetch(ptr, read_only ? 0 : 1, locality);
+#elif defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
+    // Microsoft compiler version
+    _mm_prefetch(static_cast<const char*>(ptr), _MM_HINT_T0 + (3 - locality));
+#endif
+}
+
 // --- Arithmetic Operations ---
 
 inline Simd<float, 8> operator+(Simd<float, 8> a, Simd<float, 8> b) {
