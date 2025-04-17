@@ -2,7 +2,7 @@ import mlx.core as mx
 import numpy as np
 import ml_dtypes
 
-size = 256
+size = 512
 dtype = mx.float16
 mx_a = mx.random.normal((size, size), dtype=dtype)
 mx_b = mx.random.normal((size, size), dtype=dtype)
