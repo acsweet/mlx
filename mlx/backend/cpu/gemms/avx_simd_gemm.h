@@ -109,14 +109,22 @@ void simd_gemm_optimized_higher_precision(
     static_assert(std::is_same_v<T, float16_t> || std::is_same_v<T, bfloat16_t>,
                   "GEMM kernel requires float16_t or bfloat16_t.");
 
+    // constexpr int MR = 6;
+    // constexpr int NR = 16; // Needs to be multiple of 8 for float8
+    // static_assert(NR % 8 == 0, "NR must be multiple of float SIMD width (8)");
+
+    // constexpr int KC_BLOCK = 256;
+    // constexpr int MC_BLOCK = 72;
+    // constexpr int NC_BLOCK = 512;
+
     // --- Blocking Parameters (Tune these!) ---
-    constexpr int MR = 6;
-    constexpr int NR = 16; // Needs to be multiple of 8 for float8
+    constexpr int MR = 4;
+    constexpr int NR = 24; // Needs to be multiple of 8 for float8
     static_assert(NR % 8 == 0, "NR must be multiple of float SIMD width (8)");
 
-    constexpr int KC_BLOCK = 256;
-    constexpr int MC_BLOCK = 72;
-    constexpr int NC_BLOCK = 512;
+    constexpr int KC_BLOCK = 384; // L2 cache
+    constexpr int MC_BLOCK = 120; // multiple of MR, fits in L1
+    constexpr int NC_BLOCK = 1920; // L3 cache (large?)
 
     static_assert(MC_BLOCK % MR == 0, "MC_BLOCK must be a multiple of MR");
     static_assert(NC_BLOCK % NR == 0, "NC_BLOCK must be a multiple of NR");
