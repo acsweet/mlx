@@ -8,7 +8,6 @@
 #include <stdexcept> // For invalid_argument
 #include <limits>    // For numeric_limits
 #include <cstring>   // For std::fill needed in packing
-#include <immintrin.h> // Needed for _mm_prefetch
 
 // Use the revised SIMD header (only float support needed now)
 #include "mlx/backend/cpu/simd/avx_simd_matmul.h"
@@ -32,56 +31,27 @@ static void pack_A_block(
     int m_block, int k_block, bool a_trans)
 {
     static_assert(std::is_same_v<T, float16_t> || std::is_same_v<T, bfloat16_t>, "T must be float16 or bfloat16");
-    constexpr int simd_width = 8; // AVX float width
-
     // Zero the destination buffer (important for padding)
     std::fill(A_packed, A_packed + MC * KC, 0.0f);
 
-    if (!a_trans) { // A is M x K, row-major (ldA >= K), accessed as M x K
-                    // Packing into A_packed (MC x KC), column-major
+    if (!a_trans) { // A is M x K, row-major (ldA >= K)
         for (int k = 0; k < k_block; ++k) {
-            const T* a_src_col_start = A + M_offset * ldA + (K_offset + k); // Start of source column slice A[M_offset, K_offset+k]
-            float* a_dst_col_ptr = A_packed + k * MC; // Destination column k in packed buffer
-            int i = 0;
-
-            // *** SIMD Optimization Attempt (Load is strided, Store is contiguous) ***
-            // This is harder to vectorize efficiently due to strided loads.
-            // We load scalar, convert, buffer, then store vector.
-            for (; i + simd_width <= m_block; i += simd_width) {
-                // Load 8 strided elements scalar -> temporary float buffer
-                alignas(32) float tmp_buf[simd_width];
-                for(int ii=0; ii < simd_width; ++ii) {
-                    tmp_buf[ii] = static_cast<float>(*(a_src_col_start + (i + ii) * ldA));
-                }
-                // Load float vector from temp buffer
-                simd::float8 a_vec = simd::load<float, simd_width>(tmp_buf);
-                // Store contiguous block in packed A column
-                simd::store<float, simd_width>(a_dst_col_ptr + i, a_vec);
-            }
-
-            // Handle remaining elements scalar
-            for (; i < m_block; ++i) {
-                a_dst_col_ptr[i] = static_cast<float>(*(a_src_col_start + i * ldA));
+            const T* a_src_col_elem_ptr = A + M_offset * ldA + (K_offset + k); // Ptr to A[M_offset, K_offset+k]
+            float* a_dst_col_ptr = A_packed + k * MC; // Packed column k
+            for (int i = 0; i < m_block; ++i) {
+                // Read A[M_offset+i, K_offset+k] (accessed via strides)
+                // Store into packed[i + k*MC]
+                a_dst_col_ptr[i] = static_cast<float>(*(a_src_col_elem_ptr + i * ldA));
             }
         }
     } else { // A is K x M, row-major (ldA >= M), accessed as transposed M x K
-             // Packing into A_packed (MC x KC), column-major
         for (int k = 0; k < k_block; ++k) {
-            // Source data is contiguous within a row of A (which corresponds to a column of A^T)
             const T* a_src_row_ptr = A + (K_offset + k) * ldA + M_offset; // Ptr to A[K_offset+k, M_offset]
-            float* a_dst_col_ptr = A_packed + k * MC; // Destination column k
-            int i = 0;
-
-            // *** SIMD Optimization (Load is contiguous, Store is contiguous) ***
-            for (; i + simd_width <= m_block; i += simd_width) {
-                // Load 8 contiguous T elements, convert to float8
-                simd::float8 a_vec = simd::load_convert_to_float<T>(a_src_row_ptr + i);
-                // Store 8 contiguous float elements
-                simd::store<float, simd_width>(a_dst_col_ptr + i, a_vec);
-            }
-            // Handle remaining elements scalar
-            for (; i < m_block; ++i) {
-                 a_dst_col_ptr[i] = static_cast<float>(a_src_row_ptr[i]);
+            float* a_dst_col_ptr = A_packed + k * MC; // Packed column k
+            for (int i = 0; i < m_block; ++i) {
+                 // Read A[K_offset+k, M_offset+i] (contiguous in row)
+                 // Store into packed[i + k*MC]
+                a_dst_col_ptr[i] = static_cast<float>(a_src_row_ptr[i]);
             }
         }
     }
@@ -96,56 +66,28 @@ static void pack_B_block(
     int k_block, int n_block, bool b_trans)
 {
     static_assert(std::is_same_v<T, float16_t> || std::is_same_v<T, bfloat16_t>, "T must be float16 or bfloat16");
-    constexpr int simd_width = 8; // AVX float width
-
-    // Zero the destination buffer
+    // Zero the destination buffer (important for padding)
     std::fill(B_packed, B_packed + KC * NC, 0.0f);
 
     if (!b_trans) { // B is K x N, row-major (ldB >= N)
-                    // Packing into B_packed (KC x NC), row-major
         for (int k = 0; k < k_block; ++k) {
-            // Source data is contiguous within a row of B
             const T* b_src_row_ptr = B + (K_offset + k) * ldB + N_offset; // Ptr to B[K_offset+k, N_offset]
-            float* b_dst_row_ptr = B_packed + k * NC; // Packed row k (stride NC)
-            int j = 0;
-
-            // *** SIMD Optimization (Load is contiguous, Store is contiguous) ***
-            for (; j + simd_width <= n_block; j += simd_width) {
-                // Load 8 contiguous T elements, convert to float8
-                simd::float8 b_vec = simd::load_convert_to_float<T>(b_src_row_ptr + j);
-                // Store 8 contiguous float elements
-                simd::store<float, simd_width>(b_dst_row_ptr + j, b_vec);
-            }
-            // Handle remaining elements scalar
-            for (; j < n_block; ++j) {
+            float* b_dst_row_ptr = B_packed + k * NC; // Packed row k
+            for (int j = 0; j < n_block; ++j) {
+                 // Read B[K_offset+k, N_offset+j] (contiguous in row)
+                 // Store into packed[k*NC + j]
                  b_dst_row_ptr[j] = static_cast<float>(b_src_row_ptr[j]);
             }
         }
     } else { // B is N x K, row-major (ldB >= K), accessed as transposed K x N
-             // Packing into B_packed (KC x NC), row-major
         for (int k = 0; k < k_block; ++k) {
              float* b_dst_row_ptr = B_packed + k * NC; // Packed row k
-             int j = 0;
-
-             // *** SIMD Optimization Attempt (Load is strided, Store is contiguous) ***
-             // Similar issue to non-transposed A packing. Load is the challenge.
-             for (; j + simd_width <= n_block; j += simd_width) {
-                 // Load 8 strided elements scalar -> temporary float buffer
-                 alignas(32) float tmp_buf[simd_width];
-                 for(int jj=0; jj < simd_width; ++jj) {
-                    // Read B[N_offset+j+jj, K_offset+k]
-                    const T* b_src_elem_ptr = B + (N_offset + j + jj) * ldB + (K_offset + k);
-                    tmp_buf[jj] = static_cast<float>(*b_src_elem_ptr);
-                 }
-                 // Load float vector from temp buffer
-                 simd::float8 b_vec = simd::load<float, simd_width>(tmp_buf);
-                 // Store 8 contiguous float elements
-                 simd::store<float, simd_width>(b_dst_row_ptr + j, b_vec);
-             }
-
-             // Handle remaining elements scalar
-             for (; j < n_block; ++j) {
+             // Need pointer to column k in B (which is row k of B^T)
+             // The element B[N_offset+j, K_offset+k] is at B + (N_offset+j)*ldB + (K_offset+k)
+             for (int j = 0; j < n_block; ++j) {
+                 // Read B[N_offset+j, K_offset+k]
                  const T* b_src_elem_ptr = B + (N_offset + j) * ldB + (K_offset + k);
+                 // Store into packed[k*NC + j]
                  b_dst_row_ptr[j] = static_cast<float>(*b_src_elem_ptr);
              }
         }
@@ -167,6 +109,14 @@ void simd_gemm_optimized_higher_precision(
     static_assert(std::is_same_v<T, float16_t> || std::is_same_v<T, bfloat16_t>,
                   "GEMM kernel requires float16_t or bfloat16_t.");
 
+    // constexpr int MR = 6;
+    // constexpr int NR = 16; // Needs to be multiple of 8 for float8
+    // static_assert(NR % 8 == 0, "NR must be multiple of float SIMD width (8)");
+
+    // constexpr int KC_BLOCK = 256;
+    // constexpr int MC_BLOCK = 72;
+    // constexpr int NC_BLOCK = 512;
+
     // --- Blocking Parameters (Tune these!) ---
     constexpr int MR = 4;
     constexpr int NR = 24; // Needs to be multiple of 8 for float8
@@ -175,10 +125,6 @@ void simd_gemm_optimized_higher_precision(
     constexpr int KC_BLOCK = 384; // L2 cache
     constexpr int MC_BLOCK = 120; // multiple of MR, fits in L1
     constexpr int NC_BLOCK = 1920; // L3 cache (large?)
-
-    // Prefetch distances (tune these based on profiling!)
-    constexpr int PREFETCH_K_DIST = 8;  // How many k iterations ahead in microkernel
-    constexpr int PREFETCH_PACK_DIST = 1; // How many outer blocks ahead for packing
 
     static_assert(MC_BLOCK % MR == 0, "MC_BLOCK must be a multiple of MR");
     static_assert(NC_BLOCK % NR == 0, "NC_BLOCK must be a multiple of NR");
@@ -243,19 +189,6 @@ void simd_gemm_optimized_higher_precision(
 
         // Accumulate A*B panel result into c_regs
         for (int k = 0; k < kc; ++k) {
-            // *** Prefetch for Microkernel ***
-            // Prefetch A and B data needed PREFETCH_K_DIST iterations later
-            if (k + PREFETCH_K_DIST < kc) {
-                // Prefetch next slice of B panel (row k + PREFETCH_K_DIST)
-                 _mm_prefetch((const char*)(B_panel + (k + PREFETCH_K_DIST) * NC_pack_stride), _MM_HINT_T0);
-                 // Prefetch next slice of A panel (column k + PREFETCH_K_DIST)
-                 _mm_prefetch((const char*)(A_panel + (k + PREFETCH_K_DIST) * MC_pack_stride), _MM_HINT_T0);
-                 // Optionally prefetch multiple rows of A for next k iteration
-                 for (int pf_i = 0; pf_i < MR; pf_i += 4) { // Skip every 4 to reduce prefetch overhead
-                    _mm_prefetch((const char*)(A_panel + pf_i + (k + PREFETCH_K_DIST) * MC_pack_stride), _MM_HINT_T0);
-                 }
-            }
-
             // B panel is row-major packed (KC x NC), stride is NC_pack_stride
             const float* b_row_k_ptr = B_panel + k * NC_pack_stride;
             float8 b_k_vecs[num_b_vectors];
@@ -315,58 +248,12 @@ void simd_gemm_optimized_higher_precision(
         for (int pc = 0; pc < K; pc += KC_BLOCK) {
             int kc = std::min(KC_BLOCK, K - pc);
 
-            // *** Prefetch B for the NEXT pc iteration ***
-            if (pc + KC_BLOCK < K) {
-                int next_pc = pc + KC_BLOCK;
-                
-                // Prefetch first row of the next B block
-                if (!b_trans) {
-                    const T* next_b_prefetch_addr = b + (next_pc) * ldB + jc;
-                    _mm_prefetch((const char*)next_b_prefetch_addr, _MM_HINT_T1);
-                    // Prefetch a few more positions along the row
-                    if (nc > 64) {
-                        _mm_prefetch((const char*)(next_b_prefetch_addr + 64), _MM_HINT_T1);
-                    }
-                } else {
-                    // For transposed B, prefetch the first few columns
-                    const T* next_b_prefetch_addr = b + jc * ldB + next_pc;
-                    _mm_prefetch((const char*)next_b_prefetch_addr, _MM_HINT_T1);
-                    // Prefetch a few more positions down the column
-                    if (kc > 64) {
-                        _mm_prefetch((const char*)(next_b_prefetch_addr + 64 * ldB), _MM_HINT_T1);
-                    }
-                }
-            }
-
             // Pack B Panel (T -> float, KC x NC row-major)
             pack_B_block<T, KC_BLOCK, NC_BLOCK>(
                 b, B_packed_vec.data(), K, N, ldB, pc, jc, kc, nc, b_trans);
 
             for (int ic = 0; ic < M; ic += MC_BLOCK) {
                 int mc = std::min(MC_BLOCK, M - ic);
-
-                // *** Prefetch A for the NEXT ic iteration ***
-                if (ic + MC_BLOCK < M) {
-                    int next_ic = ic + MC_BLOCK;
-                     
-                    // Prefetch first element of the next A block
-                    if (!a_trans) {
-                        const T* next_a_prefetch_addr = a + next_ic * ldA + pc;
-                        _mm_prefetch((const char*)next_a_prefetch_addr, _MM_HINT_T1);
-                        // Prefetch a few more positions along the row
-                        if (K - pc > 64) {
-                            _mm_prefetch((const char*)(next_a_prefetch_addr + 64), _MM_HINT_T1);
-                        }
-                    } else {
-                        // For transposed A, prefetch the first few columns
-                        const T* next_a_prefetch_addr = a + pc * ldA + next_ic;
-                        _mm_prefetch((const char*)next_a_prefetch_addr, _MM_HINT_T1);
-                        // Prefetch a few more positions down the column
-                        if (mc > 64) {
-                            _mm_prefetch((const char*)(next_a_prefetch_addr + 64 * ldA), _MM_HINT_T1);
-                        }
-                    }
-                }
 
                 // Pack A Panel (T -> float, MC x KC col-major)
                 pack_A_block<T, MC_BLOCK, KC_BLOCK>(
