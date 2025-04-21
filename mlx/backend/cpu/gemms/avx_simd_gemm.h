@@ -365,7 +365,7 @@ void simd_gemm_optimized_higher_precision(
     static_assert(NR % 8 == 0, "NR must be multiple of float SIMD width (8)");
 
     constexpr int KC_BLOCK = 64; // L2 cache
-    constexpr int MC_BLOCK = 66;  // multiple of MR, fits in L1
+    constexpr int MC_BLOCK = 72;  // multiple of MR, fits in L1
     constexpr int NC_BLOCK = 256; // L3 cache
 
     // constexpr int PREFETCH_K_DIST = 2;
