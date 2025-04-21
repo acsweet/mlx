@@ -2,11 +2,12 @@ import mlx.core as mx
 import numpy as np
 import ml_dtypes
 
-size = 512
+size = 517
 dtype = mx.float16
 mx_a = mx.random.normal((size, size), dtype=dtype)
 mx_b = mx.random.normal((size, size), dtype=dtype)
 mx_ab = mx.matmul(mx_a, mx_b)
+mx.eval(mx_ab)
 print(mx_ab.shape, mx_ab.dtype)
 
 a = np.array(mx_a)
@@ -24,7 +25,7 @@ if not all_close:
     print('b', b.max(), b.min())
     print('a', mx_a.max(), mx_a.min())
     print('b', mx_b.max(), mx_b.min())
-# print('allclose:', np.allclose(np_ab, np.array(mx_ab)))
+print('allclose:', np.allclose(np_ab, np.array(mx_ab)))
 
 # array([[-1.10449, -0.057312],
 #        [0, 0],

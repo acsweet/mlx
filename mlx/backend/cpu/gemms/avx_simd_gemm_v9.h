@@ -360,12 +360,12 @@ void simd_gemm_optimized_higher_precision(
 
     // --- Blocking Parameters ---
     // constexpr int MR = 6;
-    constexpr int MR = 6; 
+    constexpr int MR = 8; 
     constexpr int NR = 16; // Needs to be multiple of 8 for float8
     static_assert(NR % 8 == 0, "NR must be multiple of float SIMD width (8)");
 
-    constexpr int KC_BLOCK = 64; // L2 cache
-    constexpr int MC_BLOCK = 66;  // multiple of MR, fits in L1
+    constexpr int KC_BLOCK = 256; // L2 cache
+    constexpr int MC_BLOCK = 64;  // multiple of MR, fits in L1
     constexpr int NC_BLOCK = 256; // L3 cache
 
     // constexpr int PREFETCH_K_DIST = 2;
@@ -481,24 +481,15 @@ void simd_gemm_optimized_higher_precision(
                         float* c_acc_sub = C_acc + (ic + ir) * ldC + (jc + jr);
 
                         // Choose Kernel
-                        // if (m_micro == 8 && n_micro == 16) {      // hot path
-                        //     simd::micro_kernel_8x16(
-                        //         a_kernel_ptr,
-                        //         b_kernel_ptr,
-                        //         c_acc_sub,
-                        //         ldC,
-                        //         kc,
-                        //         MC_BLOCK,   // a_stride
-                        //         NC_BLOCK);  // b_stride
-                        if (m_micro == 6 && n_micro == 16) {      // hot path
-                                    simd::micro_kernel_6x16(
-                                        a_kernel_ptr,
-                                        b_kernel_ptr,
-                                        c_acc_sub,
-                                        ldC,
-                                        kc,
-                                        MC_BLOCK,   // a_stride
-                                        NC_BLOCK);  // b_stride
+                        if (m_micro == 8 && n_micro == 16) {      // hot path
+                            simd::micro_kernel_8x16(
+                                a_kernel_ptr,
+                                b_kernel_ptr,
+                                c_acc_sub,
+                                ldC,
+                                kc,
+                                MC_BLOCK,   // a_stride
+                                NC_BLOCK);  // b_stride
                         } else {
                             // Partial tile - use scalar kernel
                             compute_block_scalar_partial(

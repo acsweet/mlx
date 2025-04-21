@@ -63,7 +63,7 @@ for dtype in dtypes:
     _df_result = benchmark(dtype, sizes)
     df_result = pd.concat([df_result, _df_result], ignore_index=True)
 
-dtypes = [np.float16, np.float32]
+dtypes = [np.float32] # np.float16, 
 for dtype in dtypes:
     _df_result = benchmark_np(dtype, sizes)
     df_result = pd.concat([df_result, _df_result], ignore_index=True)
