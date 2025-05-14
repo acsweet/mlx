@@ -256,93 +256,6 @@ static void pack_B_block(
     }
 }
 
-// // ⭐⭐ OPTIMIZATION: Unrolled microkernel with k-loop unrolling by 4
-// template <int MR, int NR, int UNROLL_K = 4>
-// void compute_fma_microkernel_optimized(
-//     const float* A_panel,
-//     const float* B_panel,
-//     float* C_block, 
-//     int ldc,
-//     int kc,
-//     int MC_pack_stride,
-//     int NC_pack_stride)
-// {
-//     using float8 = simd::float8;
-//     constexpr int simd_width = 8;
-//     constexpr int num_b_vectors = NR / simd_width;
-    
-//     // Keep accumulators in registers
-//     float8 c_regs[MR][num_b_vectors];
-    
-//     // Load existing C values
-//     for (int i = 0; i < MR; ++i) {
-//         for (int bj = 0; bj < num_b_vectors; ++bj) {
-//             c_regs[i][bj] = simd::load<float, 8>(C_block + i * ldc + bj * simd_width);
-//         }
-//     }
-    
-//     // Main k-loop with unrolling
-//     int k = 0;
-//     for (; k + UNROLL_K <= kc; k += UNROLL_K) {
-//         // Prefetch
-//         _mm_prefetch((const char*)(A_panel + (k + UNROLL_K) * MC_pack_stride), _MM_HINT_T0);
-//         _mm_prefetch((const char*)(B_panel + (k + UNROLL_K) * NC_pack_stride), _MM_HINT_T0);
-        
-//         // Load B vectors for multiple k iterations
-//         float8 b_vecs[UNROLL_K][num_b_vectors];
-        
-//         // Preload all B vectors for the unrolled iterations
-//         for (int ku = 0; ku < UNROLL_K; ++ku) {
-//             const float* b_row_ptr = B_panel + (k + ku) * NC_pack_stride;
-//             for (int bj = 0; bj < num_b_vectors; ++bj) {
-//                 b_vecs[ku][bj] = simd::load<float, 8>(b_row_ptr + bj * simd_width);
-//             }
-//         }
-        
-//         // Process each microkernel row
-//         for (int i = 0; i < MR; ++i) {
-//             // Load A scalars for multiple k iterations
-//             float8 a_scalars[UNROLL_K];
-//             for (int ku = 0; ku < UNROLL_K; ++ku) {
-//                 a_scalars[ku] = simd::broadcast<float, 8>(A_panel + (k + ku) * MC_pack_stride + i);
-//             }
-            
-//             // Unrolled FMA operations for each B vector
-//             for (int bj = 0; bj < num_b_vectors; ++bj) {
-//                 for (int ku = 0; ku < UNROLL_K; ++ku) {
-//                     c_regs[i][bj] = simd::fma<float, 8>(a_scalars[ku], b_vecs[ku][bj], c_regs[i][bj]);
-//                 }
-//             }
-//         }
-//     }
-    
-//     // Handle remaining k iterations
-//     for (; k < kc; ++k) {
-//         const float* b_row_k_ptr = B_panel + k * NC_pack_stride;
-//         float8 b_k_vecs[num_b_vectors];
-        
-//         for (int bj = 0; bj < num_b_vectors; ++bj) {
-//             b_k_vecs[bj] = simd::load<float, 8>(b_row_k_ptr + bj * simd_width);
-//         }
-        
-//         const float* a_col_k_ptr = A_panel + k * MC_pack_stride;
-//         for (int i = 0; i < MR; ++i) {
-//             float8 a_ik = simd::broadcast<float, 8>(a_col_k_ptr + i);
-//             for (int bj = 0; bj < num_b_vectors; ++bj) {
-//                 c_regs[i][bj] = simd::fma<float, 8>(a_ik, b_k_vecs[bj], c_regs[i][bj]);
-//             }
-//         }
-//     }
-    
-//     // Store accumulated results back to C
-//     for (int i = 0; i < MR; ++i) {
-//         for (int bj = 0; bj < num_b_vectors; ++bj) {
-//             float* acc_ptr = C_block + i * ldc + bj * simd_width;
-//             simd::store<float, 8>(acc_ptr, c_regs[i][bj]);
-//         }
-//     }
-// }
-
 /**
  * Optimized single-threaded matrix multiplication using AVX/FMA with full float32 accumulation
  * For T = float16_t or bfloat16_t inputs/outputs.
@@ -365,7 +278,7 @@ void simd_gemm_optimized_higher_precision(
     static_assert(NR % 8 == 0, "NR must be multiple of float SIMD width (8)");
 
     constexpr int KC_BLOCK = 64; // L2 cache
-    constexpr int MC_BLOCK = 72;  // multiple of MR, fits in L1
+    constexpr int MC_BLOCK = 96;  // multiple of MR, fits in L1
     constexpr int NC_BLOCK = 256; // L3 cache
 
     // constexpr int PREFETCH_K_DIST = 2;
