@@ -63,10 +63,10 @@ for dtype in dtypes:
     _df_result = benchmark(dtype, sizes)
     df_result = pd.concat([df_result, _df_result], ignore_index=True)
 
-dtypes = [np.float32] # np.float16, 
-for dtype in dtypes:
-    _df_result = benchmark_np(dtype, sizes)
-    df_result = pd.concat([df_result, _df_result], ignore_index=True)
+# dtypes = [np.float32] # np.float16, 
+# for dtype in dtypes:
+#     _df_result = benchmark_np(dtype, sizes)
+#     df_result = pd.concat([df_result, _df_result], ignore_index=True)
 
 df_results_grouped = df_result.groupby(['dtype', 'size']).agg({'time': 'mean'}).reset_index()
 df_results_grouped_pivot = df_results_grouped.pivot(index='size', columns='dtype', values='time')

@@ -30,7 +30,7 @@ template <typename T> inline void scale_accumulate_store(
 // ==========================================================================
 // Specialization for float using AVX (__m256, N=8)
 // ==========================================================================
-template <> constexpr int max_size<float> = 8;
+// template <> constexpr int max_size<float> = 8;
 using float8 = Simd<float, 8>; // Alias
 
 template <>
