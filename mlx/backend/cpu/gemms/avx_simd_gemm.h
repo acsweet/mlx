@@ -2,27 +2,17 @@
 #pragma once
 
 #include <algorithm>
-#include <cmath>
 #include <cstring>
-#include <immintrin.h> // For _mm_prefetch only (AVX intrinsics should be in avx_simd_matmul.h)
+#include <immintrin.h>
 #include <limits>
-#include <memory> // For aligned_alloc
 #include <stdexcept>
 #include <type_traits>
 
-// Use the SIMD header
 #include "mlx/backend/cpu/simd/avx_simd_matmul.h"
 
 namespace mlx::core {
 
-// Helper for integer division rounded up
-inline int ceildiv(int a, int b) {
-    if (b == 0) throw std::invalid_argument("Division by zero in ceildiv");
-    if (a <= 0) return 0; // Handle non-positive a
-    return (a + b - 1) / b;
-}
-
-// Aligned memory allocation helper
+// 32-byte aligned buffer with grow-only reallocation (for thread_local reuse).
 template <typename T>
 class aligned_unique_ptr {
 private:
@@ -31,9 +21,8 @@ private:
 
 public:
     aligned_unique_ptr() : ptr_(nullptr), size_(0) {}
-    
+
     explicit aligned_unique_ptr(size_t size) : size_(size) {
-        // Allocate with 32-byte alignment for AVX
         ptr_ = static_cast<T*>(aligned_alloc(32, size * sizeof(T)));
         if (!ptr_) throw std::bad_alloc();
     }
@@ -42,8 +31,7 @@ public:
         if (ptr_) free(ptr_);
     }
     
-    // Move semantics
-    aligned_unique_ptr(aligned_unique_ptr&& other) noexcept 
+    aligned_unique_ptr(aligned_unique_ptr&& other) noexcept
         : ptr_(other.ptr_), size_(other.size_) {
         other.ptr_ = nullptr;
         other.size_ = 0;
@@ -60,16 +48,11 @@ public:
         return *this;
     }
     
-    // Disallow copying
     aligned_unique_ptr(const aligned_unique_ptr&) = delete;
     aligned_unique_ptr& operator=(const aligned_unique_ptr&) = delete;
-    
-    // Access
+
     T* get() const { return ptr_; }
-    T& operator[](size_t idx) { return ptr_[idx]; }
-    const T& operator[](size_t idx) const { return ptr_[idx]; }
-    
-    // Reset with new size if needed
+
     void reset(size_t new_size) {
         if (new_size > size_) {
             if (ptr_) free(ptr_);
@@ -80,15 +63,13 @@ public:
     }
 };
 
-// Use the optimized transpose function from simd header
-// This moves AVX-specific code to the appropriate file
 template <typename T>
-inline void pack_transpose_8x8(const T* src, float* dst, int src_stride, int dst_stride) {
+inline void pack_transpose_8x8(
+    const T* src, float* dst, int src_stride, int dst_stride) {
     simd::transpose_8x8_block<T>(src, dst, src_stride, dst_stride);
 }
 
-// --- Optimized Packing Functions (T -> float) ---
-// Pack A block (m_block x k_block) from T into A_packed (MC x KC float), column-major layout
+// Pack A block (m_block x k_block) into A_packed (MC x KC float, column-major).
 template <typename T, int MC, int KC>
 static void pack_A_block(
     const T* A, float* A_packed,
@@ -96,36 +77,30 @@ static void pack_A_block(
     int M_offset, int K_offset,
     int m_block, int k_block, bool a_trans)
 {
-    static_assert(std::is_same_v<T, float16_t> || std::is_same_v<T, bfloat16_t>, "T must be float16 or bfloat16");
-    constexpr int simd_width = 8; // AVX float width
+    static_assert(std::is_same_v<T, float16_t> || std::is_same_v<T, bfloat16_t>,
+                  "T must be float16 or bfloat16");
+    constexpr int simd_width = 8;
 
-    // ⭐⭐⭐ OPTIMIZATION: Only zero-fill the edge cases, not the entire buffer
-    // Only zero the parts we'll actually access
+    // Zero-fill only the portions we access (edge tiles)
     if (m_block < MC || k_block < KC) {
-        // Only zero needed portions
         for (int k = 0; k < k_block; ++k) {
             std::fill(A_packed + k * MC, A_packed + k * MC + m_block, 0.0f);
         }
     }
 
-    if (!a_trans) { // A is M x K, row-major (ldA >= K), accessed as M x K
-                    // Packing into A_packed (MC x KC), column-major
+    if (!a_trans) {
+        // A is row-major (M x K). Pack with 8x8 transpose blocks.
         for (int k = 0; k < k_block; k += 8) {
             int k_chunk = std::min(8, k_block - k);
-            
+
             if (k_chunk == 8) {
-                // Full SIMD width for k dimension
                 for (int i = 0; i < m_block; i += 8) {
                     int m_chunk = std::min(8, m_block - i);
-                    
+
                     if (m_chunk == 8) {
-                        // Process 8x8 block with full SIMD - use the fast transpose function
-                        // This avoids the strided load issue
                         const T* a_block_start = A + (M_offset + i) * ldA + K_offset + k;
-                        // ⭐⭐⭐ FIX: Pass the destination stride (MC) to the transpose function
                         pack_transpose_8x8<T>(a_block_start, A_packed + k * MC + i, ldA, MC);
                     } else {
-                        // Handle partial m_chunk < 8
                         for (int ii = 0; ii < m_chunk; ++ii) {
                             const T* a_src_row_ptr = A + (M_offset + i + ii) * ldA + K_offset + k;
                             for (int kk = 0; kk < k_chunk; ++kk) {
@@ -135,7 +110,6 @@ static void pack_A_block(
                     }
                 }
             } else {
-                // Handle partial k_chunk < 8
                 for (int i = 0; i < m_block; ++i) {
                     const T* a_src_row_ptr = A + (M_offset + i) * ldA + K_offset + k;
                     for (int kk = 0; kk < k_chunk; ++kk) {
@@ -144,23 +118,16 @@ static void pack_A_block(
                 }
             }
         }
-    } else { // A is K x M, row-major (ldA >= M), accessed as transposed M x K
-             // Packing into A_packed (MC x KC), column-major
+    } else {
+        // A is transposed (K x M row-major). Contiguous copy with SIMD convert.
         for (int k = 0; k < k_block; ++k) {
-            // Source data is contiguous within a row of A (which corresponds to a column of A^T)
             const T* a_src_row_ptr = A + (K_offset + k) * ldA + M_offset;
             float* a_dst_col_ptr = A_packed + k * MC;
             int i = 0;
-
-            // Process 8 elements at a time
             for (; i + simd_width <= m_block; i += simd_width) {
-                // Load 8 contiguous T elements, convert to float8
                 simd::float8 a_vec = simd::load_convert_to_float<T>(a_src_row_ptr + i);
-                // Store 8 contiguous float elements
                 simd::store<float, simd_width>(a_dst_col_ptr + i, a_vec);
             }
-            
-            // Handle remaining elements scalar
             for (; i < m_block; ++i) {
                 a_dst_col_ptr[i] = static_cast<float>(a_src_row_ptr[i]);
             }
@@ -168,7 +135,7 @@ static void pack_A_block(
     }
 }
 
-// Pack B block (k_block x n_block) from T into B_packed (KC x NC float), row-major layout
+// Pack B block (k_block x n_block) into B_packed (KC x NC float, row-major).
 template <typename T, int KC, int NC>
 static void pack_B_block(
     const T* B, float* B_packed,
@@ -176,65 +143,49 @@ static void pack_B_block(
     int K_offset, int N_offset,
     int k_block, int n_block, bool b_trans)
 {
-    static_assert(std::is_same_v<T, float16_t> || std::is_same_v<T, bfloat16_t>, "T must be float16 or bfloat16");
-    constexpr int simd_width = 8; // AVX float width
+    static_assert(std::is_same_v<T, float16_t> || std::is_same_v<T, bfloat16_t>,
+                  "T must be float16 or bfloat16");
+    constexpr int simd_width = 8;
 
-    // ⭐⭐⭐ OPTIMIZATION: Only zero-fill the edge cases, not the entire buffer
     if (k_block < KC || n_block < NC) {
-        // Only zero needed portions
         for (int k = 0; k < k_block; ++k) {
             std::fill(B_packed + k * NC, B_packed + k * NC + n_block, 0.0f);
         }
     }
 
-    if (!b_trans) { // B is K x N, row-major (ldB >= N)
-                    // Packing into B_packed (KC x NC), row-major
+    if (!b_trans) {
+        // B is row-major (K x N). Contiguous copy with SIMD convert.
         for (int k = 0; k < k_block; ++k) {
-            // Source data is contiguous within a row of B
             const T* b_src_row_ptr = B + (K_offset + k) * ldB + N_offset;
             float* b_dst_row_ptr = B_packed + k * NC;
             int j = 0;
-
-            // Process 8 elements at a time
             for (; j + simd_width <= n_block; j += simd_width) {
-                // Load 8 contiguous T elements, convert to float8
                 simd::float8 b_vec = simd::load_convert_to_float<T>(b_src_row_ptr + j);
-                // Store 8 contiguous float elements
                 simd::store<float, simd_width>(b_dst_row_ptr + j, b_vec);
             }
-            
-            // Handle remaining elements scalar
             for (; j < n_block; ++j) {
                 b_dst_row_ptr[j] = static_cast<float>(b_src_row_ptr[j]);
             }
         }
-    } else { // B is N x K, row-major (ldB >= K), accessed as transposed K x N
-             // Packing into B_packed (KC x NC), row-major
+    } else {
+        // B is transposed (N x K row-major). Pack with 8x8 transpose blocks.
         for (int k = 0; k < k_block; k += 8) {
             int k_chunk = std::min(8, k_block - k);
-            
+
             if (k_chunk == 8) {
-                // Full SIMD width for k dimension
                 for (int j = 0; j < n_block; j += 8) {
                     int n_chunk = std::min(8, n_block - j);
-                    
+
                     if (n_chunk == 8) {
-                        // Process 8x8 block with fast transpose function
                         const T* b_block_start = B + (N_offset + j) * ldB + K_offset + k;
-                        
-                        // Need to transpose differently for B since output is row-major
                         float tmp_transpose[64];
-                        // ⭐⭐⭐ FIX: Pass the destination stride for the B block transpose
                         pack_transpose_8x8<T>(b_block_start, tmp_transpose, ldB, 8);
-                        
-                        // Copy transposed block to B_packed with proper stride
                         for (int kk = 0; kk < 8; ++kk) {
                             for (int jj = 0; jj < 8; ++jj) {
                                 B_packed[(k + kk) * NC + (j + jj)] = tmp_transpose[kk * 8 + jj];
                             }
                         }
                     } else {
-                        // Handle partial n_chunk < 8
                         for (int kk = 0; kk < k_chunk; ++kk) {
                             float* b_dst_row_ptr = B_packed + (k + kk) * NC + j;
                             for (int jj = 0; jj < n_chunk; ++jj) {
@@ -244,7 +195,6 @@ static void pack_B_block(
                     }
                 }
             } else {
-                // Handle partial k_chunk < 8
                 for (int kk = 0; kk < k_chunk; ++kk) {
                     float* b_dst_row_ptr = B_packed + (k + kk) * NC;
                     for (int j = 0; j < n_block; ++j) {
@@ -287,10 +237,9 @@ void simd_gemm_optimized_higher_precision(
     static_assert(MC_BLOCK % MR == 0, "MC_BLOCK must be a multiple of MR");
     static_assert(NC_BLOCK % NR == 0, "NC_BLOCK must be a multiple of NR");
 
-    // Thread-local aligned buffers (allocated once, reused across calls)
+    // Thread-local buffers (grow-only, reused across calls)
     thread_local aligned_unique_ptr<float> A_packed_buf(MC_BLOCK * KC_BLOCK);
     thread_local aligned_unique_ptr<float> B_packed_buf(KC_BLOCK * NC_BLOCK);
-    // C accumulator: M × NC_BLOCK — persists across pc iterations
     thread_local aligned_unique_ptr<float> C_acc_buf(1);
 
     A_packed_buf.reset(MC_BLOCK * KC_BLOCK);
@@ -301,8 +250,9 @@ void simd_gemm_optimized_higher_precision(
     float* B_packed = B_packed_buf.get();
     float* C_acc = C_acc_buf.get();
 
-    // Scalar kernel for edge tiles (m_micro < MR or n_micro < NR)
+    // Scalar fallback for edge tiles (m_micro < MR or n_micro < NR)
     auto compute_block_scalar_partial = [](
+
         const float* A_panel,
         const float* B_panel,
         float* C_sub,
@@ -324,7 +274,6 @@ void simd_gemm_optimized_higher_precision(
 
     constexpr int sw = 8;
 
-    // --- Main Loop: jc → pc → ic (B reuse + fp32 C across K-panels) ---
     for (int jc = 0; jc < N; jc += NC_BLOCK) {
         int nc = std::min(NC_BLOCK, N - jc);
 
@@ -333,18 +282,16 @@ void simd_gemm_optimized_higher_precision(
             bool first_k = (pc == 0);
             bool last_k = (pc + kc >= K);
 
-            // Pack B panel once per (jc, pc) — reused across all ic
             pack_B_block<T, KC_BLOCK, NC_BLOCK>(
                 b, B_packed, K, N, ldB, pc, jc, kc, nc, b_trans);
 
             for (int ic = 0; ic < M; ic += MC_BLOCK) {
                 int mc = std::min(MC_BLOCK, M - ic);
 
-                // Pack A panel per (ic, pc)
                 pack_A_block<T, MC_BLOCK, KC_BLOCK>(
                     a, A_packed, M, K, ldA, ic, pc, mc, kc, a_trans);
 
-                // On first K-panel, initialize C_acc from fp16 input (with beta)
+                // Initialize C_acc on first K-panel
                 if (first_k) {
                     if (beta != 0.0f) {
                         simd::float8 beta_vec(beta);
@@ -366,9 +313,8 @@ void simd_gemm_optimized_higher_precision(
                         }
                     }
                 }
-                // else: C_acc already has fp32 partial sums from previous pc
 
-                // --- Run microkernels (accumulate into C_acc) ---
+                // Microkernel loop
                 for (int ir = 0; ir < mc; ir += MR) {
                     int m_micro = std::min(MR, mc - ir);
 
@@ -381,17 +327,13 @@ void simd_gemm_optimized_higher_precision(
 
                         // Prefetch next C_acc tile into L2
                         if (jr + NR < nc) {
-                            // Next jr tile (same ir)
-                            for (int pi = 0; pi < MR && ir + pi < mc; ++pi) {
+                            for (int pi = 0; pi < MR && ir + pi < mc; ++pi)
                                 _mm_prefetch(reinterpret_cast<const char*>(
                                     C_acc + (ic + ir + pi) * NC_BLOCK + jr + NR), _MM_HINT_T1);
-                            }
                         } else if (ir + MR < mc) {
-                            // First jr tile of next ir row
-                            for (int pi = 0; pi < MR && ir + MR + pi < mc; ++pi) {
+                            for (int pi = 0; pi < MR && ir + MR + pi < mc; ++pi)
                                 _mm_prefetch(reinterpret_cast<const char*>(
                                     C_acc + (ic + ir + MR + pi) * NC_BLOCK), _MM_HINT_T1);
-                            }
                         }
 
                         if (m_micro == MR && n_micro == NR) {
@@ -409,7 +351,7 @@ void simd_gemm_optimized_higher_precision(
                     }
                 }
 
-                // On last K-panel, write C_acc back to fp16/bf16 output
+                // Write C_acc back to output on last K-panel
                 if (last_k) {
                     bool apply_alpha = (alpha != 1.0f);
                     simd::float8 alpha_vec(alpha);
@@ -435,7 +377,7 @@ void simd_gemm_optimized_higher_precision(
     } // jc
 }
 
-// Public interface wrapper
+// Public interface: validates dimensions and dispatches to the blocked kernel.
 template <typename T, typename AccT>
 void simd_gemm(
     const T* a,
@@ -450,29 +392,26 @@ void simd_gemm(
     float beta = 0.0f)
 {
     static_assert(std::is_same_v<T, float16_t> || std::is_same_v<T, bfloat16_t>,
-                  "simd_gemm interface requires T = float16_t or bfloat16_t.");
+                  "simd_gemm requires T = float16_t or bfloat16_t.");
     static_assert(std::is_same_v<AccT, float>,
-                  "simd_gemm interface requires AccT = float for float16/bfloat16.");
+                  "simd_gemm requires AccT = float.");
 
-    // --- Dimension Conversion and Validation ---
     if (M_s > static_cast<size_t>(std::numeric_limits<int>::max()) ||
         N_s > static_cast<size_t>(std::numeric_limits<int>::max()) ||
         K_s > static_cast<size_t>(std::numeric_limits<int>::max())) {
-        throw std::overflow_error("Matrix dimensions exceed integer limits in simd_gemm.");
+        throw std::overflow_error("Matrix dimensions exceed int limits.");
     }
     int M = static_cast<int>(M_s);
     int N = static_cast<int>(N_s);
     int K = static_cast<int>(K_s);
 
-    // Handle NOP cases
-    if (M <= 0 || N <= 0) { return; }
+    if (M <= 0 || N <= 0) return;
 
-    // --- Infer Leading Dimensions (Assuming Contiguous Row-Major within batch) ---
     int ldA = (!a_trans) ? K : M;
     int ldB = (!b_trans) ? N : K;
     int ldC = N;
 
-    // Handle K=0 case (C = beta * C) using inferred ldC
+    // K=0: C = beta * C
     if (K <= 0) {
         if (beta == 0.0f) {
             for (int i = 0; i < M; ++i) {
@@ -490,7 +429,6 @@ void simd_gemm(
         return;
     }
 
-    // --- Call the higher precision implementation ---
     simd_gemm_optimized_higher_precision<T>(
         a, b, c,
         a_trans, b_trans,
