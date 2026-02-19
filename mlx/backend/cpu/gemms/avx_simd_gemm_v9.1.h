@@ -257,182 +257,207 @@ static void pack_B_block(
 }
 
 /**
- * Optimized single-threaded matrix multiplication using AVX/FMA with
- * float32 accumulation. Inputs/outputs are float16 or bfloat16.
- *
- * Uses jc→pc→ic loop order (classic Goto) so B is packed once per (jc,pc)
- * and reused across all ic blocks.  An M×NC_BLOCK fp32 accumulator keeps
- * partial C sums in fp32 across K-panels, eliminating fp16 round-trips.
+ * Optimized single-threaded matrix multiplication using AVX/FMA with full float32 accumulation
+ * For T = float16_t or bfloat16_t inputs/outputs.
  */
-template <typename T>
+template <typename T> // T = float16_t or bfloat16_t
 void simd_gemm_optimized_higher_precision(
     const T* a, const T* b, T* c,
     bool a_trans, bool b_trans,
     int M, int N, int K,
-    int ldA, int ldB, int ldC,
-    float alpha, float beta)
+    int ldA, int ldB, int ldC, // Leading dimensions
+    float alpha, float beta)   // User-provided alpha/beta
 {
     static_assert(std::is_same_v<T, float16_t> || std::is_same_v<T, bfloat16_t>,
                   "GEMM kernel requires float16_t or bfloat16_t.");
 
     // --- Blocking Parameters ---
-    constexpr int MR = 6;
-    constexpr int NR = 16;
+    // constexpr int MR = 6;
+    constexpr int MR = 6; 
+    constexpr int NR = 16; // Needs to be multiple of 8 for float8
     static_assert(NR % 8 == 0, "NR must be multiple of float SIMD width (8)");
 
-    constexpr int KC_BLOCK = 256;
-    constexpr int MC_BLOCK = 96;
-    constexpr int NC_BLOCK = 256;
+    constexpr int KC_BLOCK = 64; // L2 cache
+    constexpr int MC_BLOCK = 96;  // multiple of MR, fits in L1
+    constexpr int NC_BLOCK = 256; // L3 cache
+
+    // constexpr int PREFETCH_K_DIST = 2;
+    // constexpr int K_UNROLL = 4;   // Unroll the k-loop in microkernel
 
     static_assert(MC_BLOCK % MR == 0, "MC_BLOCK must be a multiple of MR");
     static_assert(NC_BLOCK % NR == 0, "NC_BLOCK must be a multiple of NR");
 
-    // Thread-local aligned buffers (allocated once, reused across calls)
+    // ⭐ OPTIMIZATION: Use aligned memory allocation, allocated once
+    // Thread-local static buffers to avoid reallocation
     thread_local aligned_unique_ptr<float> A_packed_buf(MC_BLOCK * KC_BLOCK);
     thread_local aligned_unique_ptr<float> B_packed_buf(KC_BLOCK * NC_BLOCK);
-    // C accumulator: M × NC_BLOCK — persists across pc iterations
-    thread_local aligned_unique_ptr<float> C_acc_buf(1);
-
+    thread_local aligned_unique_ptr<float> C_acc_buf(M * ldC);
+    
+    // Ensure buffers are large enough (should rarely need resizing)
     A_packed_buf.reset(MC_BLOCK * KC_BLOCK);
     B_packed_buf.reset(KC_BLOCK * NC_BLOCK);
-    C_acc_buf.reset(M * NC_BLOCK);
-
+    C_acc_buf.reset(M * ldC);
+    
     float* A_packed = A_packed_buf.get();
     float* B_packed = B_packed_buf.get();
     float* C_acc = C_acc_buf.get();
 
-    // Scalar kernel for edge tiles (m_micro < MR or n_micro < NR)
-    auto compute_block_scalar_partial = [](
+    // --- Initialize C_acc with beta * C if beta != 0 ---
+    // ⭐⭐⭐ OPTIMIZATION: Convert from half to float just once
+    // ⭐⭐⭐ OPTIMIZATION: Convert while streaming - convert at the beginning and only once
+    if (beta != 0.0f) {
+        constexpr int simd_width = 8;
+        simd::float8 beta_vec(beta);
+        
+        for (int i = 0; i < M; ++i) {
+            int j = 0;
+            // Process 8 elements at a time with SIMD
+            for (; j + simd_width <= N; j += simd_width) {
+                T* c_ptr = c + i * ldC + j;
+                float* acc_ptr = C_acc + i * ldC + j;
+                
+                // Load and convert C (T) to float8 - we do this conversion just once
+                simd::float8 c_old_vec = simd::load_convert_to_float<T>(c_ptr);
+                
+                // Multiply by beta and store to C_acc
+                c_old_vec = beta_vec * c_old_vec;
+                simd::store<float, 8>(acc_ptr, c_old_vec);
+            }
+            
+            // Handle remaining elements
+            for (; j < N; ++j) {
+                C_acc[i * ldC + j] = beta * static_cast<float>(c[i * ldC + j]);
+            }
+        }
+    } else {
+        // If beta is 0, just zero out C_acc
+        std::memset(C_acc, 0, M * ldC * sizeof(float));
+    }
+
+    // --- Modified Scalar Kernel for Edges/Partial Tiles ---
+    auto compute_block_scalar_partial = [&](
         const float* A_panel,
         const float* B_panel,
-        float* C_sub,
+        float* C_acc_sub,
         int ldc_acc,
         int m_micro, int n_micro, int k_block,
-        int a_stride,
-        int b_stride)
+        int MC_pack_stride,
+        int NC_pack_stride)
     {
         for (int i = 0; i < m_micro; ++i) {
             for (int j = 0; j < n_micro; ++j) {
-                float acc = C_sub[i * ldc_acc + j];
+                float* acc_ptr = C_acc_sub + i * ldc_acc + j;
+                float acc = *acc_ptr; // Load existing accumulator value
+                
                 for (int k = 0; k < k_block; ++k) {
-                    acc += A_panel[i + k * a_stride] * B_panel[k * b_stride + j];
+                    float a_ik = A_panel[i + k * MC_pack_stride];
+                    float b_kj = B_panel[k * NC_pack_stride + j];
+                    // Use AVX FMA directly instead of std::fmaf for better performance
+                    acc = _mm_cvtss_f32(_mm_fmadd_ss(_mm_set_ss(a_ik), _mm_set_ss(b_kj), _mm_set_ss(acc)));
                 }
-                C_sub[i * ldc_acc + j] = acc;
+                
+                *acc_ptr = acc; // Store back to accumulator
             }
         }
     };
 
-    constexpr int sw = 8;
-
-    // --- Main Loop: jc → pc → ic (B reuse + fp32 C across K-panels) ---
+    // --- Main Loop Structure (jc -> pc -> ic -> ir -> jr) ---
     for (int jc = 0; jc < N; jc += NC_BLOCK) {
         int nc = std::min(NC_BLOCK, N - jc);
 
         for (int pc = 0; pc < K; pc += KC_BLOCK) {
             int kc = std::min(KC_BLOCK, K - pc);
-            bool first_k = (pc == 0);
-            bool last_k = (pc + kc >= K);
 
-            // Pack B panel once per (jc, pc) — reused across all ic
+            // ⭐⭐ OPTIMIZATION: Pack B block once for this panel
             pack_B_block<T, KC_BLOCK, NC_BLOCK>(
                 b, B_packed, K, N, ldB, pc, jc, kc, nc, b_trans);
 
             for (int ic = 0; ic < M; ic += MC_BLOCK) {
                 int mc = std::min(MC_BLOCK, M - ic);
 
-                // Pack A panel per (ic, pc)
+                // Pack A Panel (T -> float, MC x KC col-major)
                 pack_A_block<T, MC_BLOCK, KC_BLOCK>(
                     a, A_packed, M, K, ldA, ic, pc, mc, kc, a_trans);
 
-                // On first K-panel, initialize C_acc from fp16 input (with beta)
-                if (first_k) {
-                    if (beta != 0.0f) {
-                        simd::float8 beta_vec(beta);
-                        for (int i = 0; i < mc; ++i) {
-                            const T* c_row = c + (ic + i) * ldC + jc;
-                            float* acc_row = C_acc + (ic + i) * NC_BLOCK;
-                            int j = 0;
-                            for (; j + sw <= nc; j += sw) {
-                                simd::float8 cv = simd::load_convert_to_float<T>(c_row + j);
-                                simd::store<float, 8>(acc_row + j, beta_vec * cv);
-                            }
-                            for (; j < nc; ++j) {
-                                acc_row[j] = beta * static_cast<float>(c_row[j]);
-                            }
-                        }
-                    } else {
-                        for (int i = 0; i < mc; ++i) {
-                            std::memset(C_acc + (ic + i) * NC_BLOCK, 0, nc * sizeof(float));
-                        }
-                    }
-                }
-                // else: C_acc already has fp32 partial sums from previous pc
-
-                // --- Run microkernels (accumulate into C_acc) ---
+                // ⭐⭐ OPTIMIZATION: Process micro-kernels more efficiently
                 for (int ir = 0; ir < mc; ir += MR) {
                     int m_micro = std::min(MR, mc - ir);
 
                     for (int jr = 0; jr < nc; jr += NR) {
                         int n_micro = std::min(NR, nc - jr);
 
-                        const float* a_ptr = A_packed + ir;
-                        const float* b_ptr = B_packed + jr;
-                        float* c_ptr = C_acc + (ic + ir) * NC_BLOCK + jr;
+                        // Pointers to packed data for the micro-kernel block
+                        const float* a_kernel_ptr = A_packed + ir;
+                        const float* b_kernel_ptr = B_packed + jr;
+                        
+                        // Pointer to C_acc submatrix
+                        float* c_acc_sub = C_acc + (ic + ir) * ldC + (jc + jr);
 
-                        // Prefetch next C_acc tile into L2
-                        if (jr + NR < nc) {
-                            // Next jr tile (same ir)
-                            for (int pi = 0; pi < MR && ir + pi < mc; ++pi) {
-                                _mm_prefetch(reinterpret_cast<const char*>(
-                                    C_acc + (ic + ir + pi) * NC_BLOCK + jr + NR), _MM_HINT_T1);
-                            }
-                        } else if (ir + MR < mc) {
-                            // First jr tile of next ir row
-                            for (int pi = 0; pi < MR && ir + MR + pi < mc; ++pi) {
-                                _mm_prefetch(reinterpret_cast<const char*>(
-                                    C_acc + (ic + ir + MR + pi) * NC_BLOCK), _MM_HINT_T1);
-                            }
-                        }
-
-                        if (m_micro == MR && n_micro == NR) {
-                            simd::micro_kernel_6x16(
-                                a_ptr, b_ptr, c_ptr,
-                                NC_BLOCK, kc,
-                                MC_BLOCK, NC_BLOCK);
+                        // Choose Kernel
+                        // if (m_micro == 8 && n_micro == 16) {      // hot path
+                        //     simd::micro_kernel_8x16(
+                        //         a_kernel_ptr,
+                        //         b_kernel_ptr,
+                        //         c_acc_sub,
+                        //         ldC,
+                        //         kc,
+                        //         MC_BLOCK,   // a_stride
+                        //         NC_BLOCK);  // b_stride
+                        if (m_micro == 6 && n_micro == 16) {      // hot path
+                                    simd::micro_kernel_6x16(
+                                        a_kernel_ptr,
+                                        b_kernel_ptr,
+                                        c_acc_sub,
+                                        ldC,
+                                        kc,
+                                        MC_BLOCK,   // a_stride
+                                        NC_BLOCK);  // b_stride
                         } else {
+                            // Partial tile - use scalar kernel
                             compute_block_scalar_partial(
-                                a_ptr, b_ptr, c_ptr,
-                                NC_BLOCK,
+                                a_kernel_ptr,
+                                b_kernel_ptr,
+                                c_acc_sub,
+                                ldC,
                                 m_micro, n_micro, kc,
-                                MC_BLOCK, NC_BLOCK);
+                                MC_BLOCK,
+                                NC_BLOCK
+                            );
                         }
-                    }
-                }
+                    } // End loop jr (NR blocks)
+                } // End loop ir (MR blocks)
+            } // End loop ic (MC blocks)
+        } // End loop pc (KC blocks)
+    } // End loop jc (NC blocks)
 
-                // On last K-panel, write C_acc back to fp16/bf16 output
-                if (last_k) {
-                    bool apply_alpha = (alpha != 1.0f);
-                    simd::float8 alpha_vec(alpha);
-
-                    for (int i = 0; i < mc; ++i) {
-                        T* c_row = c + (ic + i) * ldC + jc;
-                        float* acc_row = C_acc + (ic + i) * NC_BLOCK;
-                        int j = 0;
-                        for (; j + sw <= nc; j += sw) {
-                            simd::float8 acc = simd::load<float, 8>(acc_row + j);
-                            if (apply_alpha) acc = alpha_vec * acc;
-                            simd::store_convert_from_float<T>(c_row + j, acc);
-                        }
-                        for (; j < nc; ++j) {
-                            float val = acc_row[j];
-                            if (apply_alpha) val *= alpha;
-                            c_row[j] = static_cast<T>(val);
-                        }
-                    }
-                }
-            } // ic
-        } // pc
-    } // jc
+    // --- Final conversion from float accumulator to output type T ---
+    // Apply alpha scaling and convert to T using SIMD
+    constexpr int simd_width = 8;
+    simd::float8 alpha_vec(alpha);
+    
+    for (int i = 0; i < M; ++i) {
+        int j = 0;
+        // Process 8 elements at a time using SIMD
+        for (; j + simd_width <= N; j += simd_width) {
+            float* acc_ptr = C_acc + i * ldC + j;
+            T* c_ptr = c + i * ldC + j;
+            
+            // Load accumulated values
+            simd::float8 acc_vec = simd::load<float, 8>(acc_ptr);
+            
+            // Apply alpha
+            acc_vec = alpha_vec * acc_vec;
+            
+            // Convert and store to output type T
+            simd::store_convert_from_float<T>(c_ptr, acc_vec);
+        }
+        
+        // Handle remaining elements
+        for (; j < N; ++j) {
+            float result = alpha * C_acc[i * ldC + j];
+            c[i * ldC + j] = static_cast<T>(result);
+        }
+    }
 }
 
 // Public interface wrapper

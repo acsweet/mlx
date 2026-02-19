@@ -516,87 +516,79 @@ inline void micro_kernel_6x16(
 {
     static_assert(MR == 6, "This kernel requires MR=6");
     static_assert(NR == 16, "This kernel requires NR=16");
-    
-    // Define our vectors - use raw __m256 for best compiler optimization
-    // Each register holds 8 floats, so we need 2 registers per row for NR=16
-    __m256 c[MR][NR/8];
 
-    // Load accumulators 
-    #pragma unroll
-    for (int i = 0; i < MR; ++i) {
-        for (int j = 0; j < NR/8; ++j) {
-            c[i][j] = _mm256_loadu_ps(C_block + i*ldc + 8*j);
+    // 6 rows × 2 halves = 12 accumulator registers
+    // + 2 B loads + 1 A broadcast = 15 total (fits in 16 YMM)
+    __m256 c00 = _mm256_loadu_ps(C_block + 0*ldc);
+    __m256 c01 = _mm256_loadu_ps(C_block + 0*ldc + 8);
+    __m256 c10 = _mm256_loadu_ps(C_block + 1*ldc);
+    __m256 c11 = _mm256_loadu_ps(C_block + 1*ldc + 8);
+    __m256 c20 = _mm256_loadu_ps(C_block + 2*ldc);
+    __m256 c21 = _mm256_loadu_ps(C_block + 2*ldc + 8);
+    __m256 c30 = _mm256_loadu_ps(C_block + 3*ldc);
+    __m256 c31 = _mm256_loadu_ps(C_block + 3*ldc + 8);
+    __m256 c40 = _mm256_loadu_ps(C_block + 4*ldc);
+    __m256 c41 = _mm256_loadu_ps(C_block + 4*ldc + 8);
+    __m256 c50 = _mm256_loadu_ps(C_block + 5*ldc);
+    __m256 c51 = _mm256_loadu_ps(C_block + 5*ldc + 8);
+
+    // Prefetch distance: 8 k-iterations ahead.
+    // B row = 16 floats = 64 bytes = 1 cache line (if aligned).
+    // A col = 6 floats = 24 bytes, fits in 1 cache line.
+    constexpr int PF_DIST = 8;
+
+    for (int k = 0; k < kc; ++k) {
+        const float* b_ptr = B_panel + k * b_stride;
+        const float* a_ptr = A_panel + k * a_stride;
+
+        // Software prefetch: bring future B and A into L1
+        if (k + PF_DIST < kc) {
+            _mm_prefetch(reinterpret_cast<const char*>(B_panel + (k + PF_DIST) * b_stride), _MM_HINT_T0);
+            _mm_prefetch(reinterpret_cast<const char*>(B_panel + (k + PF_DIST) * b_stride + 8), _MM_HINT_T0);
+            _mm_prefetch(reinterpret_cast<const char*>(A_panel + (k + PF_DIST) * a_stride), _MM_HINT_T0);
         }
+
+        __m256 b0 = _mm256_loadu_ps(b_ptr);
+        __m256 b1 = _mm256_loadu_ps(b_ptr + 8);
+
+        __m256 a;
+        a = _mm256_broadcast_ss(a_ptr + 0);
+        c00 = _mm256_fmadd_ps(a, b0, c00);
+        c01 = _mm256_fmadd_ps(a, b1, c01);
+
+        a = _mm256_broadcast_ss(a_ptr + 1);
+        c10 = _mm256_fmadd_ps(a, b0, c10);
+        c11 = _mm256_fmadd_ps(a, b1, c11);
+
+        a = _mm256_broadcast_ss(a_ptr + 2);
+        c20 = _mm256_fmadd_ps(a, b0, c20);
+        c21 = _mm256_fmadd_ps(a, b1, c21);
+
+        a = _mm256_broadcast_ss(a_ptr + 3);
+        c30 = _mm256_fmadd_ps(a, b0, c30);
+        c31 = _mm256_fmadd_ps(a, b1, c31);
+
+        a = _mm256_broadcast_ss(a_ptr + 4);
+        c40 = _mm256_fmadd_ps(a, b0, c40);
+        c41 = _mm256_fmadd_ps(a, b1, c41);
+
+        a = _mm256_broadcast_ss(a_ptr + 5);
+        c50 = _mm256_fmadd_ps(a, b0, c50);
+        c51 = _mm256_fmadd_ps(a, b1, c51);
     }
 
-    // Main k-loop with unrolling by 4
-    for (int k = 0; k < kc; k += 4) {
-        // Handle edge case for k dimension
-        if (k + 4 > kc) {
-            // Handle remaining k iterations one at a time
-            for (int kr = k; kr < kc; ++kr) {
-                // Load B vectors (two vectors for NR=16)
-                __m256 b0 = _mm256_loadu_ps(B_panel + kr*b_stride);
-                __m256 b1 = _mm256_loadu_ps(B_panel + kr*b_stride + 8);
-                
-                // Process each row of A
-                #pragma unroll
-                for (int i = 0; i < MR; ++i) {
-                    // Broadcast A scalar to vector
-                    __m256 a = _mm256_broadcast_ss(A_panel + i + kr*a_stride);
-                    
-                    // FMA operations for the two B vectors
-                    c[i][0] = _mm256_fmadd_ps(a, b0, c[i][0]);
-                    c[i][1] = _mm256_fmadd_ps(a, b1, c[i][1]);
-                }
-            }
-            break;
-        }
-        
-        // Load all B vectors for 4 iterations (2 vectors per iteration for NR=16)
-        __m256 b00 = _mm256_loadu_ps(B_panel + (k+0)*b_stride);
-        __m256 b01 = _mm256_loadu_ps(B_panel + (k+0)*b_stride + 8);
-        __m256 b10 = _mm256_loadu_ps(B_panel + (k+1)*b_stride);
-        __m256 b11 = _mm256_loadu_ps(B_panel + (k+1)*b_stride + 8);
-        __m256 b20 = _mm256_loadu_ps(B_panel + (k+2)*b_stride);
-        __m256 b21 = _mm256_loadu_ps(B_panel + (k+2)*b_stride + 8);
-        __m256 b30 = _mm256_loadu_ps(B_panel + (k+3)*b_stride);
-        __m256 b31 = _mm256_loadu_ps(B_panel + (k+3)*b_stride + 8);
-
-        // Process each row of A
-        #pragma unroll
-        for (int i = 0; i < MR; ++i) {
-            // Broadcast A scalar to vector for each k iteration
-            __m256 a0 = _mm256_broadcast_ss(A_panel + i + (k+0)*a_stride);
-            __m256 a1 = _mm256_broadcast_ss(A_panel + i + (k+1)*a_stride);
-            __m256 a2 = _mm256_broadcast_ss(A_panel + i + (k+2)*a_stride);
-            __m256 a3 = _mm256_broadcast_ss(A_panel + i + (k+3)*a_stride);
-
-            // First iteration (k+0)
-            c[i][0] = _mm256_fmadd_ps(a0, b00, c[i][0]);
-            c[i][1] = _mm256_fmadd_ps(a0, b01, c[i][1]);
-            
-            // Second iteration (k+1)
-            c[i][0] = _mm256_fmadd_ps(a1, b10, c[i][0]);
-            c[i][1] = _mm256_fmadd_ps(a1, b11, c[i][1]);
-            
-            // Third iteration (k+2)
-            c[i][0] = _mm256_fmadd_ps(a2, b20, c[i][0]);
-            c[i][1] = _mm256_fmadd_ps(a2, b21, c[i][1]);
-            
-            // Fourth iteration (k+3)
-            c[i][0] = _mm256_fmadd_ps(a3, b30, c[i][0]);
-            c[i][1] = _mm256_fmadd_ps(a3, b31, c[i][1]);
-        }
-    }
-
-    // Store results back to C
-    #pragma unroll
-    for (int i = 0; i < MR; ++i) {
-        for (int j = 0; j < NR/8; ++j) {
-            _mm256_storeu_ps(C_block + i*ldc + 8*j, c[i][j]);
-        }
-    }
+    _mm256_storeu_ps(C_block + 0*ldc,     c00);
+    _mm256_storeu_ps(C_block + 0*ldc + 8, c01);
+    _mm256_storeu_ps(C_block + 1*ldc,     c10);
+    _mm256_storeu_ps(C_block + 1*ldc + 8, c11);
+    _mm256_storeu_ps(C_block + 2*ldc,     c20);
+    _mm256_storeu_ps(C_block + 2*ldc + 8, c21);
+    _mm256_storeu_ps(C_block + 3*ldc,     c30);
+    _mm256_storeu_ps(C_block + 3*ldc + 8, c31);
+    _mm256_storeu_ps(C_block + 4*ldc,     c40);
+    _mm256_storeu_ps(C_block + 4*ldc + 8, c41);
+    _mm256_storeu_ps(C_block + 5*ldc,     c50);
+    _mm256_storeu_ps(C_block + 5*ldc + 8, c51);
 }
 
 
