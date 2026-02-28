@@ -10,18 +10,32 @@ import mlx.core as mx
 import numpy as np
 import torch
 
-device_name = subprocess.check_output(["sysctl", "-n", "machdep.cpu.brand_string"])
-device_name = device_name.decode("utf-8").strip("\n")
+try:
+    device_name = subprocess.check_output(
+        ["sysctl", "-n", "machdep.cpu.brand_string"], stderr=subprocess.DEVNULL
+    ).decode("utf-8").strip()
+except (subprocess.CalledProcessError, FileNotFoundError):
+    device_name = "unknown"
 
-N_warmup = 8
-N_iter_bench = 80
+if torch.backends.mps.is_available():
+    torch_device = "mps"
+    torch_sync = torch.mps.synchronize
+elif torch.cuda.is_available():
+    torch_device = "cuda"
+    torch_sync = torch.cuda.synchronize
+else:
+    torch_device = "cpu"
+    torch_sync = lambda: None
+
+N_warmup = 2
+N_iter_bench = 10
 N_iter_func = 5
 
 
 def bench(f, a, b):
     for i in range(N_warmup):
         f(a, b)
-    torch.mps.synchronize()
+    torch_sync()
 
     s = time.perf_counter_ns()
     for i in range(N_iter_bench):
@@ -72,7 +86,7 @@ def gemm_nn_torch(a, b):
     for i in range(N_iter_func):
         y = a @ b
         ys.append(y)
-    torch.mps.synchronize()
+    torch_sync()
     return ys
 
 
@@ -82,7 +96,7 @@ def gemm_nt_torch(a, b):
     for i in range(N_iter_func):
         y = a @ b.transpose(-1, -2)
         ys.append(y)
-    torch.mps.synchronize()
+    torch_sync()
     return ys
 
 
@@ -92,7 +106,7 @@ def gemm_tn_torch(a, b):
     for i in range(N_iter_func):
         y = a.transpose(-1, -2) @ b
         ys.append(y)
-    torch.mps.synchronize()
+    torch_sync()
     return ys
 
 
@@ -102,7 +116,7 @@ def gemm_tt_torch(a, b):
     for i in range(N_iter_func):
         y = a.transpose(-1, -2) @ b.transpose(-1, -2)
         ys.append(y)
-    torch.mps.synchronize()
+    torch_sync()
     return ys
 
 
@@ -116,10 +130,10 @@ def bench_shape(B, M, N, K, np_dtype, transpose="nn"):
     a_mx = mx.array(a_np)
     b_mx = mx.array(b_np)
 
-    a_pt = torch.from_numpy(a_np).to("mps")
-    b_pt = torch.from_numpy(b_np).to("mps")
+    a_pt = torch.from_numpy(a_np).to(torch_device)
+    b_pt = torch.from_numpy(b_np).to(torch_device)
 
-    torch.mps.synchronize()
+    torch_sync()
 
     f_mx = {
         "nn": gemm_nn_mlx,
@@ -164,15 +178,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run gemm benchmarks")
 
     dtypes = ("float32", "float16")
-    transposes = ("nn", "nt", "tn")
+    transposes = ("nn", ) # "nt", "tn")
     shapes = (
         (16, 234, 768, 3072),
-        (1, 64, 64, 25344),
-        (16, 1024, 1024, 1024),
+        # (1, 64, 64, 25344),
+        # (16, 1024, 1024, 1024),
         (1, 1024, 1024, 2048),
-        (4, 1024, 1024, 4096),
-        (4, 1024, 4096, 1024),
-        (1, 4096, 4096, 4096),
+        # (4, 1024, 1024, 4096),
+        # (4, 1024, 4096, 1024),
+        # (1, 4096, 4096, 4096),
     )
 
     for dtype in dtypes:

@@ -14,6 +14,7 @@ namespace mlx::core::simd {
 template <typename T, int N> struct Simd;
 template <typename T, int N> inline Simd<T, N> load(const T* ptr);
 template <typename T, int N> inline void store(T* ptr, Simd<T, N> x);
+template <typename T, int N> inline Simd<T, N> broadcast(const T* ptr);
 template <typename T, int N> inline Simd<T, N> fma(Simd<T, N> a, Simd<T, N> b, Simd<T, N> c);
 
 

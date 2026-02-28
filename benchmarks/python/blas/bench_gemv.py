@@ -15,21 +15,40 @@ results_dir = "./results"
 if not os.path.isdir(results_dir):
     os.mkdir(results_dir)
 
-device_name = subprocess.check_output(["sysctl", "-n", "machdep.cpu.brand_string"])
-device_name = device_name.decode("utf-8").strip("\n")
+try:
+    device_name = subprocess.check_output(["sysctl", "-n", "machdep.cpu.brand_string"])
+    device_name = device_name.decode("utf-8").strip("\n")
+except (subprocess.CalledProcessError, FileNotFoundError):
+    device_name = "unknown"
 
-N_warmup = 5
-N_iter_bench = 50
-N_iter_func = 20
+if torch.backends.mps.is_available():
+    torch_device = "mps"
+    torch_sync = torch.mps.synchronize
+elif torch.cuda.is_available():
+    torch_device = "cuda"
+    torch_sync = torch.cuda.synchronize
+else:
+    torch_device = "cpu"
+    torch_sync = lambda: None
 
-out_vec_sizes = [128, 512, 2048, 4096]
-in_vec_sizes = [128, 512, 2048, 4096]
+# N_warmup = 5
+# N_iter_bench = 50
+# N_iter_func = 20
+N_warmup = 2
+N_iter_bench = 10
+N_iter_func = 5
 
-benchmark_vector_lens = []
-benchmark_vector_lens += [(i + 1) * 4096 for i in range(8)][::2]
-benchmark_vector_lens += [(i + 1) * 4095 for i in range(8)][::2]
-benchmark_vector_lens += [(i + 1) * 4097 for i in range(8)][::2]
-benchmark_vector_lens += [64, 128, 512, 1024, 2048, 11008, 32000]
+# out_vec_sizes = [128, 512, 2048, 4096]
+# in_vec_sizes = [128, 512, 2048, 4096]
+out_vec_sizes = [512, 2048]
+in_vec_sizes = [512, 2048]
+
+benchmark_vector_lens = [128, 1024, 4096, 11008]
+# benchmark_vector_lens = []
+# benchmark_vector_lens += [(i + 1) * 4096 for i in range(8)][::2]
+# benchmark_vector_lens += [(i + 1) * 4095 for i in range(8)][::2]
+# benchmark_vector_lens += [(i + 1) * 4097 for i in range(8)][::2]
+# benchmark_vector_lens += [64, 128, 512, 1024, 2048, 11008, 32000]
 
 benchmark_vector_lens.sort()
 
@@ -37,7 +56,7 @@ benchmark_vector_lens.sort()
 def bench(f, m, v):
     for i in range(N_warmup):
         f(m, v)
-    torch.mps.synchronize()
+    torch_sync()
 
     s = time.perf_counter_ns()
     for i in range(N_iter_bench):
@@ -70,7 +89,7 @@ def gemv_torch(m, v):
     for i in range(N_iter_func):
         y = m @ v
         ys.append(y)
-    torch.mps.synchronize()
+    torch_sync()
     return ys
 
 
@@ -80,7 +99,7 @@ def gemv_t_torch(m, v):
     for i in range(N_iter_func):
         y = v @ m
         ys.append(y)
-    torch.mps.synchronize()
+    torch_sync()
     return ys
 
 
@@ -92,10 +111,10 @@ def bench_lens(in_vec_len, out_vec_len, np_dtype, transpose=False):
     vec_npy = np.random.normal(0.0, 2.0 / in_vec_len, shape_vec).astype(np_dtype)
     mat_mlx = mx.array(mat_npy)
     vec_mlx = mx.array(vec_npy)
-    mat_trc = torch.from_numpy(mat_npy).to("mps")
-    vec_trc = torch.from_numpy(vec_npy).to("mps")
+    mat_trc = torch.from_numpy(mat_npy).to(torch_device)
+    vec_trc = torch.from_numpy(vec_npy).to(torch_device)
 
-    torch.mps.synchronize()
+    torch_sync()
 
     time_torch = (
         bench(gemv_t_torch, mat_trc, vec_trc)
@@ -152,6 +171,13 @@ def bench_with_in_len(ax, in_vec_len, out_vector_lens, dtype, transpose):
         mlx_gflops.append(gflop_count / time_mlx)
         pyt_gflops.append(gflop_count / time_torch)
 
+        print(
+            f"  in={in_vec_len:5d}, out={out_vec_len:5d}, "
+            f"mlx={gbyte_size/time_mlx:7.2f} GB/s, "
+            f"torch={gbyte_size/time_torch:7.2f} GB/s, "
+            f"diff={gbyte_size/time_mlx/(gbyte_size/time_torch) - 1:+.1%}"
+        )
+
     if transpose:
         title = f"gemv_t ([1, {in_vec_len}] [{in_vec_len}, out_vec_len]) | {dtype}"
     else:
@@ -183,6 +209,13 @@ def bench_with_out_len(ax, out_vec_len, in_vector_lens, dtype, transpose):
         mlx_gflops.append(gflop_count / time_mlx)
         pyt_gflops.append(gflop_count / time_torch)
 
+        print(
+            f"  in={in_vec_len:5d}, out={out_vec_len:5d}, "
+            f"mlx={gbyte_size/time_mlx:7.2f} GB/s, "
+            f"torch={gbyte_size/time_torch:7.2f} GB/s, "
+            f"diff={gbyte_size/time_mlx/(gbyte_size/time_torch) - 1:+.1%}"
+        )
+
     if transpose:
         title = f"([1, in_vec_len] [in_vec_len, {out_vec_len}])"
     else:
@@ -197,15 +230,22 @@ def bench_with_out_len(ax, out_vec_len, in_vector_lens, dtype, transpose):
 
 for transpose in (False, True):
     for dtype in ("float32", "float16"):
+        op_name = "gemv_t" if transpose else "gemv"
+        print(f"\n{'='*60}")
+        print(f"{op_name} | {dtype} | device: {torch_device}")
+        print(f"{'='*60}")
+
         fig, axs = plt.subplots(
             len(in_vec_sizes), 2, figsize=(8.5, 11), layout="constrained"
         )
 
+        print(f"--- sweep out_vec_len (fixed in_vec_len) ---")
         for i, in_vec_len in enumerate(in_vec_sizes):
             bench_with_in_len(
                 axs[i][0], in_vec_len, benchmark_vector_lens, dtype, transpose
             )
 
+        print(f"--- sweep in_vec_len (fixed out_vec_len) ---")
         for i, out_vec_len in enumerate(out_vec_sizes):
             bench_with_out_len(
                 axs[i][1], out_vec_len, benchmark_vector_lens, dtype, transpose
