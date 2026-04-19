@@ -49,6 +49,33 @@ option(USE_ASAN "Enable AddressSanitizer (ASan)" OFF)
 option(USE_UBSAN "Enable UndefinedBehaviorSanitizer (UBSan)" OFF)
 option(USE_TSAN "Enable ThreadSanitizer (TSan)" OFF)
 
+# ----------------------------- x86 SIMD Detection -----------------------------
+if(MLX_BUILD_CPU AND (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|i[3-9]86"))
+  include(CheckCXXCompilerFlag)
+
+  check_cxx_compiler_flag("-mavx2" HAS_AVX2)
+  check_cxx_compiler_flag("-mfma" HAS_FMA)
+  check_cxx_compiler_flag("-mf16c" HAS_F16C)
+
+  if(HAS_AVX2 AND HAS_FMA AND HAS_F16C)
+    message(STATUS "Compiler supports AVX2/FMA/F16C - enabling AVX SIMD backend")
+    add_compile_options(-mavx2 -mfma -mf16c)
+    add_compile_definitions(MLX_USE_AVX)
+  else()
+    message(STATUS
+      "Missing required x86 SIMD support - using base SIMD backend")
+    if(NOT HAS_AVX2)
+      message(STATUS "  Missing: AVX2")
+    endif()
+    if(NOT HAS_FMA)
+      message(STATUS "  Missing: FMA")
+    endif()
+    if(NOT HAS_F16C)
+      message(STATUS "  Missing: F16C")
+    endif()
+  endif()
+endif()
+
 # --------------------- Processor tests -------------------------
 message(
   STATUS

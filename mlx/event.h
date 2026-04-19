@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <memory>
 #include <stdexcept>
+#include <cstdint>
 
 #include "mlx/stream.h"
 
