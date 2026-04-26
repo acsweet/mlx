@@ -57,13 +57,16 @@ if(MLX_BUILD_CPU AND (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|i[3-9]86"))
   check_cxx_compiler_flag("-mfma" HAS_FMA)
   check_cxx_compiler_flag("-mf16c" HAS_F16C)
 
-  if(HAS_AVX2 AND HAS_FMA AND HAS_F16C)
-    message(STATUS "Compiler supports AVX2/FMA/F16C - enabling AVX SIMD backend")
+  if(HAS_AVX2
+     AND HAS_FMA
+     AND HAS_F16C)
+    message(
+      STATUS "Compiler supports AVX2/FMA/F16C - enabling AVX SIMD backend")
     add_compile_options(-mavx2 -mfma -mf16c)
     add_compile_definitions(MLX_USE_AVX)
   else()
-    message(STATUS
-      "Missing required x86 SIMD support - using base SIMD backend")
+    message(
+      STATUS "Missing required x86 SIMD support - using base SIMD backend")
     if(NOT HAS_AVX2)
       message(STATUS "  Missing: AVX2")
     endif()

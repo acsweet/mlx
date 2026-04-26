@@ -11,9 +11,13 @@ import numpy as np
 import torch
 
 try:
-    device_name = subprocess.check_output(
-        ["sysctl", "-n", "machdep.cpu.brand_string"], stderr=subprocess.DEVNULL
-    ).decode("utf-8").strip()
+    device_name = (
+        subprocess.check_output(
+            ["sysctl", "-n", "machdep.cpu.brand_string"], stderr=subprocess.DEVNULL
+        )
+        .decode("utf-8")
+        .strip()
+    )
 except (subprocess.CalledProcessError, FileNotFoundError):
     device_name = "unknown"
 
@@ -243,7 +247,9 @@ def main():
         )
 
     if args.verbose:
-        print(f"{'B':>3}, {'M':>4}, {'N':>4}, {'K':>4}, {'dtype':<9}, {'t':<2},  torch_gf,   mlx_gf,     diff")
+        print(
+            f"{'B':>3}, {'M':>4}, {'N':>4}, {'K':>4}, {'dtype':<9}, {'t':<2},  torch_gf,   mlx_gf,     diff"
+        )
         print("-" * 66)
 
     for dtype in dtypes:

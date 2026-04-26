@@ -48,7 +48,9 @@ class aligned_unique_ptr {
   aligned_unique_ptr(const aligned_unique_ptr&) = delete;
   aligned_unique_ptr& operator=(const aligned_unique_ptr&) = delete;
 
-  T* get() const { return ptr_; }
+  T* get() const {
+    return ptr_;
+  }
 
   void reset(size_t new_size) {
     if (new_size > size_) {

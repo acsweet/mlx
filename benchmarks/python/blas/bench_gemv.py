@@ -16,9 +16,13 @@ if not os.path.isdir(results_dir):
     os.mkdir(results_dir)
 
 try:
-    device_name = subprocess.check_output(
-        ["sysctl", "-n", "machdep.cpu.brand_string"], stderr=subprocess.DEVNULL
-    ).decode("utf-8").strip()
+    device_name = (
+        subprocess.check_output(
+            ["sysctl", "-n", "machdep.cpu.brand_string"], stderr=subprocess.DEVNULL
+        )
+        .decode("utf-8")
+        .strip()
+    )
 except (subprocess.CalledProcessError, FileNotFoundError):
     device_name = "unknown"
 
@@ -108,7 +112,9 @@ def gemv_t_torch(m, v):
     return ys
 
 
-def bench_lens(in_vec_len, out_vec_len, np_dtype, transpose=False, max_torch_elements=None):
+def bench_lens(
+    in_vec_len, out_vec_len, np_dtype, transpose=False, max_torch_elements=None
+):
     shape_mat = (in_vec_len, out_vec_len) if transpose else (out_vec_len, in_vec_len)
     shape_vec = (1, in_vec_len) if transpose else (in_vec_len, 1)
 
@@ -359,7 +365,8 @@ def main():
             fig.suptitle(f"{device_name}: {dtype} {op_name}")
             fig.savefig(
                 os.path.join(
-                    results_dir, f"{device_name.replace(' ', '_')}_{dtype}_{op_name}.pdf"
+                    results_dir,
+                    f"{device_name.replace(' ', '_')}_{dtype}_{op_name}.pdf",
                 )
             )
             plt.close(fig)
