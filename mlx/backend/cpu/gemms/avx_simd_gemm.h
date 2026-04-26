@@ -242,26 +242,15 @@ void simd_gemm_optimized_higher_precision(
                 pack_A_block<T, MC_BLOCK, KC_BLOCK>(
                     a, A_packed, M, K, ldA, ic, pc, mc, kc, a_trans);
 
-                // Initialize C_acc on first K-panel
+                // Initialize C_acc on first K-panel.
+                // Note: we always start from zero and apply both alpha (to a@b)
+                // and beta*c at writeback time. This avoids the bug where
+                // pre-loading beta*c here and multiplying the whole accumulator
+                // by alpha at writeback would produce alpha*beta*c instead of
+                // beta*c.
                 if (first_k) {
-                    if (beta != 0.0f) {
-                        simd::float8 beta_vec(beta);
-                        for (int i = 0; i < mc; ++i) {
-                            const T* c_row = c + (ic + i) * ldC + jc;
-                            float* acc_row = C_acc + (ic + i) * NC_BLOCK;
-                            int j = 0;
-                            for (; j + sw <= nc; j += sw) {
-                                simd::float8 cv = simd::load_convert_to_float<T>(c_row + j);
-                                simd::store<float, 8>(acc_row + j, beta_vec * cv);
-                            }
-                            for (; j < nc; ++j) {
-                                acc_row[j] = beta * static_cast<float>(c_row[j]);
-                            }
-                        }
-                    } else {
-                        for (int i = 0; i < mc; ++i) {
-                            std::memset(C_acc + (ic + i) * NC_BLOCK, 0, nc * sizeof(float));
-                        }
+                    for (int i = 0; i < mc; ++i) {
+                        std::memset(C_acc + (ic + i) * NC_BLOCK, 0, nc * sizeof(float));
                     }
                 }
 
@@ -302,10 +291,13 @@ void simd_gemm_optimized_higher_precision(
                     }
                 }
 
-                // Write C_acc back to output on last K-panel
+                // Write C_acc back to output on last K-panel:
+                //   c_out = alpha * (a@b) + beta * c_in
                 if (last_k) {
                     bool apply_alpha = (alpha != 1.0f);
+                    bool apply_beta  = (beta  != 0.0f);
                     simd::float8 alpha_vec(alpha);
+                    simd::float8 beta_vec(beta);
 
                     for (int i = 0; i < mc; ++i) {
                         T* c_row = c + (ic + i) * ldC + jc;
@@ -314,11 +306,16 @@ void simd_gemm_optimized_higher_precision(
                         for (; j + sw <= nc; j += sw) {
                             simd::float8 acc = simd::load<float, 8>(acc_row + j);
                             if (apply_alpha) acc = alpha_vec * acc;
+                            if (apply_beta) {
+                                simd::float8 cv = simd::load_convert_to_float<T>(c_row + j);
+                                acc = acc + beta_vec * cv;
+                            }
                             simd::store_convert_from_float<T>(c_row + j, acc);
                         }
                         for (; j < nc; ++j) {
                             float val = acc_row[j];
                             if (apply_alpha) val *= alpha;
+                            if (apply_beta) val += beta * static_cast<float>(c_row[j]);
                             c_row[j] = static_cast<T>(val);
                         }
                     }

@@ -161,23 +161,12 @@ void simd_gemv(
     acc_buf.reset(out_len);
     float* acc = acc_buf.get();
 
-    // Initialize accumulator: acc = beta * C
+    // Initialize accumulator to zero. We add beta*C at writeback so that
+    // alpha is only applied to (a@b), not to beta*c.
     // When M=1, C is 1×N contiguous. When N=1, C is M×1 contiguous (ldC=1).
     constexpr int sw = 8;
 
-    if (beta != 0.0f) {
-        simd::float8 beta_vec(beta);
-        int j = 0;
-        for (; j + sw <= out_len; j += sw) {
-            simd::float8 cv = simd::load_convert_to_float<T>(c + j);
-            simd::store<float, sw>(acc + j, beta_vec * cv);
-        }
-        for (; j < out_len; j++) {
-            acc[j] = beta * static_cast<float>(c[j]);
-        }
-    } else {
-        std::memset(acc, 0, out_len * sizeof(float));
-    }
+    std::memset(acc, 0, out_len * sizeof(float));
 
     // Accumulate: acc += op(A) * op(B)
     if (M == 1) {
@@ -200,18 +189,25 @@ void simd_gemv(
         }
     }
 
-    // Write back: C = alpha * acc (convert fp32 → T)
+    // Write back: C = alpha * acc + beta * C (convert fp32 → T)
     bool apply_alpha = (alpha != 1.0f);
+    bool apply_beta  = (beta  != 0.0f);
     simd::float8 alpha_vec(alpha);
+    simd::float8 beta_vec(beta);
     int j = 0;
     for (; j + sw <= out_len; j += sw) {
         simd::float8 val = simd::load<float, sw>(acc + j);
         if (apply_alpha) val = alpha_vec * val;
+        if (apply_beta) {
+            simd::float8 cv = simd::load_convert_to_float<T>(c + j);
+            val = val + beta_vec * cv;
+        }
         simd::store_convert_from_float<T>(c + j, val);
     }
     for (; j < out_len; j++) {
         float val = acc[j];
         if (apply_alpha) val *= alpha;
+        if (apply_beta) val += beta * static_cast<float>(c[j]);
         c[j] = static_cast<T>(val);
     }
 }
