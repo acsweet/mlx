@@ -27,9 +27,17 @@ else:
     torch_device = "cpu"
     torch_sync = lambda: None
 
-N_warmup = 2
-N_iter_bench = 10
-N_iter_func = 5
+FULL_WARMUP = 8
+FULL_ITER_BENCH = 80
+FULL_ITER_FUNC = 5
+
+QUICK_WARMUP = 2
+QUICK_ITER_BENCH = 10
+QUICK_ITER_FUNC = 5
+
+N_warmup = FULL_WARMUP
+N_iter_bench = FULL_ITER_BENCH
+N_iter_func = FULL_ITER_FUNC
 
 
 def bench(f, a, b):
@@ -120,7 +128,7 @@ def gemm_tt_torch(a, b):
     return ys
 
 
-def bench_shape(B, M, N, K, np_dtype, transpose="nn"):
+def bench_shape(B, M, N, K, np_dtype, transpose="nn", max_torch_ops=None):
     shape_a = (B, M, K) if transpose[0] == "n" else (B, K, M)
     shape_b = (B, K, N) if transpose[1] == "n" else (B, N, K)
 
@@ -149,7 +157,11 @@ def bench_shape(B, M, N, K, np_dtype, transpose="nn"):
         "tt": gemm_tt_torch,
     }[transpose]
 
-    time_torch = bench(f_pt, a_pt, b_pt)
+    gemm_ops = B * M * N * K
+    time_torch = None
+    if max_torch_ops is None or gemm_ops <= max_torch_ops:
+        time_torch = bench(f_pt, a_pt, b_pt)
+
     time_mlx = bench(f_mx, a_mx, b_mx)
 
     t_a = (0, 1, 2) if transpose[0] == "n" else (0, 2, 1)
@@ -172,34 +184,98 @@ def get_gflop_count(B, M, N, K):
     return float(2.0 * N_iter_bench * N_iter_func * B * M * N * K) / float(1024.0**3)
 
 
-if __name__ == "__main__":
+def main():
+    global N_warmup, N_iter_bench, N_iter_func
+
     parser = argparse.ArgumentParser(description="Run gemm benchmarks")
+    parser.add_argument(
+        "--quick",
+        action="store_true",
+        help="Run fewer iterations and a reduced shape set.",
+    )
+    parser.add_argument(
+        "--max-torch-ops",
+        type=int,
+        default=None,
+        help="Skip PyTorch timing for cases where B*M*N*K exceeds this value.",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print per-shape timing results.",
+    )
+    parser.add_argument(
+        "--single-threaded",
+        action="store_true",
+        help="Set OMP_NUM_THREADS=1 and OPENBLAS_NUM_THREADS=1 for single-threaded PyTorch/NumPy comparison.",
+    )
+    args = parser.parse_args()
+
+    if args.single_threaded:
+        os.environ["OMP_NUM_THREADS"] = "1"
+        os.environ["OPENBLAS_NUM_THREADS"] = "1"
+
+    if args.quick:
+        N_warmup = QUICK_WARMUP
+        N_iter_bench = QUICK_ITER_BENCH
+        N_iter_func = QUICK_ITER_FUNC
+    else:
+        N_warmup = FULL_WARMUP
+        N_iter_bench = FULL_ITER_BENCH
+        N_iter_func = FULL_ITER_FUNC
 
     dtypes = ("float32", "float16", "complex64")
     transposes = ("nn", "nt", "tn")
-    shapes = (
-        (16, 234, 768, 3072),
-        # (1, 64, 64, 25344),
-        # (16, 1024, 1024, 1024),
-        (1, 1024, 1024, 2048),
-        # (4, 1024, 1024, 4096),
-        # (4, 1024, 4096, 1024),
-        # (1, 4096, 4096, 4096),
-    )
+    if args.quick:
+        shapes = (
+            (16, 234, 768, 3072),
+            (1, 1024, 1024, 2048),
+        )
+    else:
+        shapes = (
+            (16, 234, 768, 3072),
+            (1, 64, 64, 25344),
+            (16, 1024, 1024, 1024),
+            (1, 1024, 1024, 2048),
+            (4, 1024, 1024, 4096),
+            (4, 1024, 4096, 1024),
+            (1, 4096, 4096, 4096),
+        )
+
+    if args.verbose:
+        print(f"{'B':>3}, {'M':>4}, {'N':>4}, {'K':>4}, {'dtype':<9}, {'t':<2},  torch_gf,   mlx_gf,     diff")
+        print("-" * 66)
 
     for dtype in dtypes:
         for transpose in transposes:
             for B, M, N, K in shapes:
                 np_dtype = getattr(np, dtype)
-                time_mlx, time_torch = bench_shape(B, M, N, K, np_dtype, transpose)
+                time_mlx, time_torch = bench_shape(
+                    B,
+                    M,
+                    N,
+                    K,
+                    np_dtype,
+                    transpose,
+                    args.max_torch_ops,
+                )
 
                 gflop_count = get_gflop_count(B, M, N, K)
                 gflops_mx = gflop_count / (time_mlx)
-                gflops_pt = gflop_count / (time_torch)
-                diff = gflops_mx / gflops_pt - 1.0
+                if args.verbose:
+                    if time_torch is None:
+                        print(
+                            f"{B:3d}, {M:4d}, {N:4d}, {K:4d}, {dtype}, {transpose}, skipped, {gflops_mx:05.3f}, n/a"
+                        )
+                    else:
+                        gflops_pt = gflop_count / (time_torch)
+                        diff = gflops_mx / gflops_pt - 1.0
+                        print(
+                            f"{B:3d}, {M:4d}, {N:4d}, {K:4d}, {dtype}, {transpose}, {gflops_pt:05.3f}, {gflops_mx:05.3f}, {100.0 * diff:+5.2f}%"
+                        )
+                        if gflops_pt >= 2.0 * gflops_mx:
+                            print("ATTENTION ^^^^^^^")
 
-                print(
-                    f"{B:3d}, {M:4d}, {N:4d}, {K:4d}, {dtype}, {transpose}, {gflops_pt:05.3f}, {gflops_mx:05.3f}, {100.0 * diff:+5.2f}%"
-                )
-                if gflops_pt >= 2.0 * gflops_mx:
-                    print("ATTENTION ^^^^^^^")
+
+if __name__ == "__main__":
+    main()
