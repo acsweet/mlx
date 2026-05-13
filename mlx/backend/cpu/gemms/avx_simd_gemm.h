@@ -9,15 +9,15 @@
 #include <type_traits>
 
 #include "mlx/backend/cpu/gemms/aligned_buffer.h"
+#include "mlx/backend/cpu/gemms/avx_gemm_simd.h"
 #include "mlx/backend/cpu/gemms/avx_simd_gemv.h"
-#include "mlx/backend/cpu/simd/avx_simd.h"
 
 namespace mlx::core {
 
 template <typename T>
 inline void
 pack_transpose_8x8(const T* src, float* dst, int src_stride, int dst_stride) {
-  simd::transpose_8x8_block<T>(src, dst, src_stride, dst_stride);
+  detail::transpose_8x8_block<T>(src, dst, src_stride, dst_stride);
 }
 
 // Pack A block (m_block x k_block) into A_packed (MC x KC float, column-major).
@@ -85,8 +85,8 @@ static void pack_A_block(
       float* a_dst_col_ptr = A_packed + k * MC;
       int i = 0;
       for (; i + simd_width <= m_block; i += simd_width) {
-        simd::float8 a_vec = simd::load_convert_to_float<T>(a_src_row_ptr + i);
-        simd::store<float, simd_width>(a_dst_col_ptr + i, a_vec);
+        detail::float8 a_vec = detail::load_convert_to_float<T>(a_src_row_ptr + i);
+        detail::store<float, simd_width>(a_dst_col_ptr + i, a_vec);
       }
       for (; i < m_block; ++i) {
         a_dst_col_ptr[i] = static_cast<float>(a_src_row_ptr[i]);
@@ -126,8 +126,8 @@ static void pack_B_block(
       float* b_dst_row_ptr = B_packed + k * NC;
       int j = 0;
       for (; j + simd_width <= n_block; j += simd_width) {
-        simd::float8 b_vec = simd::load_convert_to_float<T>(b_src_row_ptr + j);
-        simd::store<float, simd_width>(b_dst_row_ptr + j, b_vec);
+        detail::float8 b_vec = detail::load_convert_to_float<T>(b_src_row_ptr + j);
+        detail::store<float, simd_width>(b_dst_row_ptr + j, b_vec);
       }
       for (; j < n_block; ++j) {
         b_dst_row_ptr[j] = static_cast<float>(b_src_row_ptr[j]);
@@ -297,7 +297,7 @@ void simd_gemm_optimized_higher_precision(
             }
 
             if (m_micro == MR && n_micro == NR) {
-              simd::micro_kernel_6x16(
+              detail::micro_kernel_6x16(
                   a_ptr, b_ptr, c_ptr, NC_BLOCK, kc, MC_BLOCK, NC_BLOCK);
             } else {
               compute_block_scalar_partial(
@@ -318,22 +318,22 @@ void simd_gemm_optimized_higher_precision(
         if (last_k) {
           bool apply_alpha = (alpha != 1.0f);
           bool apply_beta = (beta != 0.0f);
-          simd::float8 alpha_vec(alpha);
-          simd::float8 beta_vec(beta);
+          detail::float8 alpha_vec(alpha);
+          detail::float8 beta_vec(beta);
 
           for (int i = 0; i < mc; ++i) {
             T* c_row = c + (ic + i) * ldC + jc;
             float* acc_row = C_acc + (ic + i) * NC_BLOCK;
             int j = 0;
             for (; j + sw <= nc; j += sw) {
-              simd::float8 acc = simd::load<float, 8>(acc_row + j);
+              detail::float8 acc = detail::load<float, 8>(acc_row + j);
               if (apply_alpha)
                 acc = alpha_vec * acc;
               if (apply_beta) {
-                simd::float8 cv = simd::load_convert_to_float<T>(c_row + j);
+                detail::float8 cv = detail::load_convert_to_float<T>(c_row + j);
                 acc = acc + beta_vec * cv;
               }
-              simd::store_convert_from_float<T>(c_row + j, acc);
+              detail::store_convert_from_float<T>(c_row + j, acc);
             }
             for (; j < nc; ++j) {
               float val = acc_row[j];
