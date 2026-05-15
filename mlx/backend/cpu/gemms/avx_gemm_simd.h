@@ -8,14 +8,7 @@
 
 #include "mlx/backend/cpu/simd/base_simd.h"
 
-// GEMM-private SIMD helpers for the AVX2 fp16/bf16 matmul path.
-//
-// This header intentionally lives under backend/cpu/gemms/ and uses the
-// mlx::core::detail namespace rather than mlx::core::simd. The helpers here
-// are scaffolding for the GEMM/GEMV kernels in this directory; they are not
-// a general SIMD abstraction layer and should not be depended on from
-// outside the gemms/ tree. A future, broader AVX2 SIMD layer can land under
-// backend/cpu/simd/ in mlx::core::simd without colliding with these symbols.
+// GEMM-private AVX2 SIMD helpers for fp16/bf16 matmul
 namespace mlx::core::detail {
 
 // Forward declarations
